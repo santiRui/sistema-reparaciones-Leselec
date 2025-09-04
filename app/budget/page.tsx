@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Search, Edit, Eye, Calculator, DollarSign, ArrowRight, FileText } from "lucide-react"
+import { Search, Edit, Eye, Calculator, DollarSign, ArrowRight, FileText, Printer } from "lucide-react"
 
 interface Client {
   id: string
@@ -422,7 +422,9 @@ export default function BudgetPage() {
             <div class="field"><strong>Diagnóstico de Falla:</strong> ${repair.diagnosticoFalla || "-"}</div>
             <div class="field"><strong>Descripción del Proceso:</strong> ${repair.descripcionProceso || "-"}</div>
             <div class="field"><strong>Repuestos:</strong> ${repair.repuestos || "-"}</div>
-            <div class="field"><strong>Importe Total:</strong> <b style='color:green;'>$${repair.importe || "-"}</b></div>
+            <div class="field"><strong>Importe Total:</strong> <b style='color:green;'>$
+              ${repair.importe ? Number(repair.importe).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+            </b></div>
           </div>
         </body>
       </html>
@@ -573,7 +575,7 @@ export default function BudgetPage() {
                             {repair.importe ? (
                               <div className="flex items-center gap-1">
                                 <DollarSign className="h-4 w-4 text-green-600" />
-                                <span className="font-medium">${repair.importe}</span>
+                                <span className="font-medium">{repair.importe ? Number(repair.importe).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">Sin presupuesto</span>
@@ -594,7 +596,7 @@ export default function BudgetPage() {
                                   title="Imprimir presupuesto"
                                   onClick={() => handlePrintBudget(repair)}
                                 >
-                                  <FileText className="h-4 w-4 text-blue-600" />
+                                  <Printer className="h-4 w-4 text-blue-600" />
                                 </Button>
                               )}
                               {hasBudget && (

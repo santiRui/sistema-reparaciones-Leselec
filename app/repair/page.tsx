@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Search, Edit, Eye, Wrench, DollarSign, ArrowRight, FileText, User, Users } from "lucide-react"
+import { Search, Edit, Eye, Wrench, DollarSign, ArrowRight, FileText, Printer, User, Users } from "lucide-react"
 
 interface Client {
   id: string
@@ -331,7 +331,7 @@ export default function RepairPage() {
         ], { onConflict: 'reparacion_id' })
       if (trabajoError) {
         console.error('Error actualizando trabajos_reparacion:', trabajoError, JSON.stringify(trabajoError, null, 2))
-        alert('Error actualizando trabajos_reparacion: ' + (trabajoError.message || JSON.stringify(trabajoError)))
+        alert('Error actualizando trabajos_reparacion: ' + (trabajoError instanceof Error ? trabajoError.message : JSON.stringify(trabajoError)))
         throw trabajoError
       }
 
@@ -343,13 +343,13 @@ export default function RepairPage() {
         encargadoReparacion: "",
         armador: "",
         observacionesReparacion: "",
-        estadoReparacion: "pendiente",
+        estadoReparacion: "pendiente"
       })
       setEditingRepair(null)
       
     } catch (error) {
       console.error('Error actualizando reparación:', error, JSON.stringify(error, null, 2))
-      alert('Error actualizando reparación: ' + (error.message || JSON.stringify(error)))
+      alert('Error actualizando reparación: ' + (error instanceof Error ? error.message : JSON.stringify(error)))
       // Aquí podrías agregar un toast o notificación de error
     } finally {
       setIsRepairDialogOpen(false)
@@ -392,6 +392,70 @@ export default function RepairPage() {
     })
     setIsRepairDialogOpen(true)
   }
+
+  // Imprimir reparación
+  const handlePrintRepair = (repair: Repair) => {
+    const client = repair.cliente;
+    const printContent = `
+      <html>
+        <head>
+          <title>Reparación ${repair.numeroIngreso}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .logo { font-size: 24px; font-weight: bold; color: #0056A6; }
+            .section { margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; }
+            .section h3 { margin-top: 0; color: #0056A6; }
+            .field { margin-bottom: 8px; }
+            .field strong { display: inline-block; width: 160px; }
+            .repair-badge { background: #2d8f5a; color: white; padding: 4px 8px; border-radius: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">LESELEC INGENIERÍA</div>
+            <h2>Reparación - ${repair.numeroIngreso}</h2>
+            <span class="repair-badge">REPARACIÓN</span>
+          </div>
+          <div class="section">
+            <h3>Información del Cliente</h3>
+            <div class="field"><strong>Cliente:</strong> ${client ? `${client.nombre} ${client.apellido}` : "Cliente no encontrado"}</div>
+            <div class="field"><strong>DNI/CUIL:</strong> ${client?.dniCuil || "N/A"}</div>
+            <div class="field"><strong>Tipo:</strong> ${client?.tipoCliente || "N/A"}</div>
+            <div class="field"><strong>Teléfono:</strong> ${client?.telefono || "N/A"}</div>
+            <div class="field"><strong>Email:</strong> ${client?.email || "N/A"}</div>
+            <div class="field"><strong>Dirección:</strong> ${client?.direccion || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Información del Equipo</h3>
+            <div class="field"><strong>Fecha de Ingreso:</strong> ${new Date(repair.fechaIngreso).toLocaleDateString("es-AR")}</div>
+            <div class="field"><strong>N° de Ingreso:</strong> ${repair.numeroIngreso}</div>
+            <div class="field"><strong>Equipo:</strong> ${repair.equipo}</div>
+            <div class="field"><strong>Marca:</strong> ${repair.marcaEquipo}</div>
+            <div class="field"><strong>N° Serie:</strong> ${repair.numeroSerie}</div>
+            <div class="field"><strong>Potencia:</strong> ${repair.potencia || "N/A"}</div>
+            <div class="field"><strong>Tensión:</strong> ${repair.tension || "N/A"}</div>
+            <div class="field"><strong>Revoluciones:</strong> ${repair.revoluciones || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Presupuesto</h3>
+            <div class="field"><strong>Diagnóstico de Falla:</strong> ${repair.diagnosticoFalla || "-"}</div>
+            <div class="field"><strong>Descripción del Proceso:</strong> ${repair.descripcionProceso || "-"}</div>
+            <div class="field"><strong>Repuestos:</strong> ${repair.repuestos || "-"}</div>
+            <div class="field"><strong>Importe Total:</strong> <b style='color:green;'>$
+              ${repair.importe ? Number(repair.importe).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+            </b></div>
+          </div>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
 
   const handleView = (repair: Repair) => {
     const client = clients.find((c) => c.id === repair.clienteId)
@@ -653,12 +717,20 @@ export default function RepairPage() {
                             {repair.importe && (
                               <div className="flex items-center gap-1">
                                 <DollarSign className="h-4 w-4 text-green-600" />
-                                <span className="font-medium">${repair.importe}</span>
+                                <span className="font-medium">{repair.importe ? Number(repair.importe).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</span>
                               </div>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Imprimir datos"
+                                onClick={() => handlePrintRepair(repair)}
+                              >
+                                <Printer className="h-4 w-4 text-blue-600" />
+                              </Button>
                               <Button variant="ghost" size="icon" onClick={() => handleView(repair)}>
                                 <Eye className="h-4 w-4" />
                               </Button>
@@ -735,7 +807,7 @@ export default function RepairPage() {
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Presupuesto</Label>
-                      <p className="text-foreground font-bold text-green-600">${editingRepair.importe}</p>
+                      <p className="text-foreground font-bold text-green-600">{editingRepair.importe ? Number(editingRepair.importe).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</p>
                     </div>
                   </div>
                   {editingRepair.diagnosticoFalla && (
@@ -829,14 +901,9 @@ export default function RepairPage() {
                     setEditingRepair(null)
                     setRepairFormData({
                       encargadoReparacion: "",
-                      supervisor: "",
-                      tecnicos: [],
                       armador: "",
                       observacionesReparacion: "",
-                      estadoReparacion: "pendiente",
-                      prioridad: "",
-                      fechaInicioReparacion: "",
-                      fechaFinReparacion: "",
+                      estadoReparacion: "pendiente"
                     })
                   }}
                 >
@@ -931,7 +998,7 @@ export default function RepairPage() {
                     {viewingRepair.importe && (
                       <div>
                         <Label className="text-sm font-medium text-muted-foreground">Importe</Label>
-                        <p className="text-foreground text-xl font-bold text-green-600">${viewingRepair.importe}</p>
+                        <p className="text-foreground text-xl font-bold text-green-600">{viewingRepair.importe ? Number(viewingRepair.importe).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</p>
                       </div>
                     )}
                   </CardContent>
