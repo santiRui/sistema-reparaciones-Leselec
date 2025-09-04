@@ -55,6 +55,7 @@ interface Repair {
   observaciones: string
   estado: "recepcion" | "presupuesto" | "reparacion" | "entrega" | "facturacion"
   fechaCreacion: string
+  fechaActualizacion?: string // NUEVO
   // Budget stage fields
   diagnosticoFalla?: string
   descripcionProceso?: string
@@ -88,15 +89,86 @@ export default function RepairPage() {
   const [repairRepairs, setRepairRepairs] = useState<Repair[]>([])
   const [repairFormData, setRepairFormData] = useState({
     encargadoReparacion: "",
-    supervisor: "",
-    tecnicos: [] as string[],
     armador: "",
     observacionesReparacion: "",
     estadoReparacion: "pendiente" as "pendiente" | "en_proceso" | "completada",
-    prioridad: "",
-    fechaInicioReparacion: "",
-    fechaFinReparacion: "",
   })
+
+  // Exportable para recarga tras submit
+  const loadRepairRepairs = async () => {
+    const { data, error } = await supabase
+      .from('reparaciones')
+      .select('*')
+      .eq('estado_actual', 'reparacion')
+    if (error) {
+      console.error('Error cargando reparaciones en taller:', error)
+    } else if (data) {
+      const repairsWithDetails = await Promise.all((data || []).map(async (rep: any, idx: number) => {
+        const { data: equipo } = await supabase
+          .from('equipos')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .single();
+        const { data: cliente } = await supabase
+          .from('clientes')
+          .select('*')
+          .eq('id', rep.cliente_id)
+          .single();
+        const { data: presupuesto } = await supabase
+          .from('presupuestos')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .order('id', { ascending: false })
+          .limit(1)
+          .single();
+        const { data: trabajo } = await supabase
+          .from('trabajos_reparacion')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .single();
+        return {
+          id: rep.id.toString(),
+          numeroIngreso: `R-${new Date(rep.fecha_creacion).getFullYear()}-${(idx+1).toString().padStart(3, '0')}`,
+          fechaIngreso: rep.fecha_creacion.split('T')[0],
+          recepcionista: '',
+          clienteId: rep.cliente_id.toString(),
+          cliente: cliente ? {
+            id: cliente.id.toString(),
+            nombre: cliente.nombre,
+            apellido: cliente.apellido,
+            dniCuil: cliente.dni_cuil,
+            tipoCliente: cliente.tipo_cliente,
+            telefono: cliente.telefono,
+            email: cliente.email,
+            direccion: cliente.direccion,
+          } : undefined,
+          equipo: equipo?.tipo_equipo || '',
+          marcaEquipo: equipo?.marca || '',
+          numeroSerie: equipo?.numero_serie || '',
+          elementosFaltantes: rep.elementos_faltantes || '',
+          accesorios: rep.accesorios || '',
+          potencia: equipo?.potencia || '',
+          tension: equipo?.tension || '',
+          revoluciones: equipo?.revoluciones || '',
+          numeroRemito: rep.numero_remito || '',
+          numeroOrdenCompra: rep.numero_orden_compra || '',
+          observaciones: rep.observaciones_recepcion || '',
+          estado: rep.estado_actual,
+          fechaCreacion: rep.fecha_creacion,
+          fechaActualizacion: rep.fecha_actualizacion || '',
+          diagnosticoFalla: presupuesto?.diagnostico_falla || '',
+          descripcionProceso: presupuesto?.descripcion_proceso || '',
+          repuestos: presupuesto?.repuestos_necesarios || '',
+          importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+          encargadoReparacion: trabajo?.encargado_reparacion || '',
+          armador: trabajo?.armador || '',
+          observacionesReparacion: trabajo?.observaciones_reparacion || '',
+          estadoReparacion: trabajo?.estado_reparacion || 'pendiente',
+        };
+      }));
+      setRepairRepairs(repairsWithDetails);
+    }
+  };
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
@@ -170,11 +242,18 @@ export default function RepairPage() {
             .order('id', { ascending: false })
             .limit(1)
             .single();
+          // Buscar datos en trabajos_reparacion
+          const { data: trabajo } = await supabase
+            .from('trabajos_reparacion')
+            .select('*')
+            .eq('reparacion_id', rep.id)
+            .single();
+
           return {
             id: rep.id.toString(),
             numeroIngreso: `R-${new Date(rep.fecha_creacion).getFullYear()}-${(idx+1).toString().padStart(3, '0')}`,
             fechaIngreso: rep.fecha_creacion.split('T')[0],
-            recepcionista: '', // puedes completar si tienes el usuario
+            recepcionista: '',
             clienteId: rep.cliente_id.toString(),
             cliente: cliente ? {
               id: cliente.id.toString(),
@@ -199,19 +278,18 @@ export default function RepairPage() {
             observaciones: rep.observaciones_recepcion || '',
             estado: rep.estado_actual,
             fechaCreacion: rep.fecha_creacion,
-            // Datos de presupuesto
+            fechaActualizacion: rep.fecha_actualizacion || '', // NUEVO
             diagnosticoFalla: presupuesto?.diagnostico_falla || '',
             descripcionProceso: presupuesto?.descripcion_proceso || '',
             repuestos: presupuesto?.repuestos_necesarios || '',
             importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
-            // Campos de reparación
-            encargadoReparacion: rep.encargado_reparacion || '',
-            armador: rep.armador || '',
-            fechaInicioReparacion: rep.fecha_inicio_reparacion || '',
-            fechaFinReparacion: rep.fecha_fin_reparacion || '',
-            observacionesReparacion: rep.observaciones_reparacion || '',
-            estadoReparacion: rep.estado_reparacion || 'pendiente',
+            // Campos de trabajos_reparacion
+            encargadoReparacion: trabajo?.encargado_reparacion || '',
+            armador: trabajo?.armador || '',
+            observacionesReparacion: trabajo?.observaciones_reparacion || '',
+            estadoReparacion: trabajo?.estado_reparacion || 'pendiente',
           };
+
         }));
         setRepairRepairs(repairsWithDetails);
       }
@@ -227,10 +305,13 @@ export default function RepairPage() {
     if (!editingRepair) return
 
     try {
-      // Actualizar solo fecha_actualizacion en reparaciones
+      // Actualizar estado_actual y fecha_actualizacion en reparaciones
       const { error: reparacionError } = await supabase
         .from('reparaciones')
-        .update({ fecha_actualizacion: new Date().toISOString() })
+        .update({ 
+          estado_actual: 'reparacion',
+          fecha_actualizacion: new Date().toISOString() 
+        })
         .eq('id', editingRepair.id)
       if (reparacionError) {
         console.error('Error actualizando reparacion:', reparacionError)
@@ -242,62 +323,33 @@ export default function RepairPage() {
         .upsert([
           {
             reparacion_id: Number(editingRepair.id),
-            encargado_id: repairFormData.encargadoReparacion ? Number(repairFormData.encargadoReparacion) : null,
-            supervisor_id: repairFormData.supervisor ? Number(repairFormData.supervisor) : null,
             estado_reparacion: repairFormData.estadoReparacion,
-            prioridad: repairFormData.prioridad || null,
-            fecha_inicio: repairFormData.fechaInicioReparacion || null,
-            fecha_fin: repairFormData.fechaFinReparacion || null,
-            observaciones: repairFormData.observacionesReparacion,
+            encargado_reparacion: repairFormData.encargadoReparacion,
+            armador: repairFormData.armador,
+            observaciones_reparacion: repairFormData.observacionesReparacion,
           }
         ], { onConflict: 'reparacion_id' })
       if (trabajoError) {
-        console.error('Error actualizando trabajos_reparacion:', trabajoError)
+        console.error('Error actualizando trabajos_reparacion:', trabajoError, JSON.stringify(trabajoError, null, 2))
+        alert('Error actualizando trabajos_reparacion: ' + (trabajoError.message || JSON.stringify(trabajoError)))
         throw trabajoError
       }
-      // Guardar técnicos múltiples en trabajos_tecnicos
-      if (trabajoData && trabajoData.length > 0 && repairFormData.tecnicos && repairFormData.tecnicos.length > 0) {
-        // Primero, eliminar técnicos anteriores
-        await supabase.from('trabajos_tecnicos').delete().eq('trabajo_id', trabajoData[0].id)
-        // Insertar los nuevos técnicos
-        const tecnicosRows = repairFormData.tecnicos.map((tecnicoId: string) => ({ trabajo_id: trabajoData[0].id, tecnico_id: Number(tecnicoId) }))
-        await supabase.from('trabajos_tecnicos').insert(tecnicosRows)
-      }
 
-      // Actualizar el estado local
-      const updatedRepair: Repair = {
-        ...editingRepair,
-        ...repairFormData,
-      }
-
-      const updatedRepairs = repairs.map((repair) =>
-        repair.id === editingRepair.id ? updatedRepair : repair,
-      )
-
-      setRepairs(updatedRepairs)
-      setRepairRepairs(updatedRepairs.filter((repair: Repair) => repair.estado === "reparacion"))
-
-      // Si el estado cambió a completada, actualizar la lista
-      if (repairFormData.estadoReparacion === 'completada') {
-        setRepairRepairs(prev => prev.filter(repair => repair.id !== editingRepair.id))
-      }
+      // Tras guardar, recargar la lista de reparaciones desde Supabase
+      await loadRepairRepairs();
 
       // Reset form
       setRepairFormData({
         encargadoReparacion: "",
-        supervisor: "",
-        tecnicos: [],
         armador: "",
         observacionesReparacion: "",
         estadoReparacion: "pendiente",
-        prioridad: "",
-        fechaInicioReparacion: "",
-        fechaFinReparacion: "",
       })
       setEditingRepair(null)
       
     } catch (error) {
-      console.error('Error actualizando reparación:', error)
+      console.error('Error actualizando reparación:', error, JSON.stringify(error, null, 2))
+      alert('Error actualizando reparación: ' + (error.message || JSON.stringify(error)))
       // Aquí podrías agregar un toast o notificación de error
     } finally {
       setIsRepairDialogOpen(false)
@@ -334,14 +386,9 @@ export default function RepairPage() {
     setEditingRepair(repair)
     setRepairFormData({
       encargadoReparacion: repair.encargadoReparacion || "",
-      supervisor: repair.supervisor || "",
-      tecnicos: repair.tecnicos || [],
       armador: repair.armador || "",
       observacionesReparacion: repair.observacionesReparacion || "",
       estadoReparacion: repair.estadoReparacion || "pendiente",
-      prioridad: repair.prioridad || "",
-      fechaInicioReparacion: repair.fechaInicioReparacion || "",
-      fechaFinReparacion: repair.fechaFinReparacion || "",
     })
     setIsRepairDialogOpen(true)
   }

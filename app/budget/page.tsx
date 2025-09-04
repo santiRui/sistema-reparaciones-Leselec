@@ -326,9 +326,30 @@ export default function BudgetPage() {
     setIsBudgetDialogOpen(true)
   }
 
-  const handleView = (repair: Repair) => {
-    const client = clients.find((c) => c.id === repair.clienteId)
+  const handleView = async (repair: Repair) => {
+    let client = clients.find((c) => c.id === repair.clienteId)
+    if (!client && repair.clienteId) {
+      // Buscar cliente en Supabase si no está en el estado local
+      const { data: clienteDb } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', repair.clienteId)
+        .single()
+      if (clienteDb) {
+        client = {
+          id: clienteDb.id.toString(),
+          nombre: clienteDb.nombre,
+          apellido: clienteDb.apellido,
+          dniCuil: clienteDb.dni_cuil,
+          tipoCliente: clienteDb.tipo_cliente,
+          telefono: clienteDb.telefono,
+          email: clienteDb.email,
+          direccion: clienteDb.direccion,
+        }
+      }
+    }
     setViewingRepair({ ...repair, cliente: client })
+    setIsBudgetDialogOpen(true)
   }
 
   const handleMoveFromReception = (repairId: string) => {
@@ -351,6 +372,68 @@ export default function BudgetPage() {
       clientName.toLowerCase().includes(searchTerm.toLowerCase())
     )
   })
+
+  // Imprimir presupuesto
+  const handlePrintBudget = (repair: Repair) => {
+    const client = repair.cliente;
+    const printContent = `
+      <html>
+        <head>
+          <title>Presupuesto ${repair.numeroIngreso}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .logo { font-size: 24px; font-weight: bold; color: #0056A6; }
+            .section { margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; }
+            .section h3 { margin-top: 0; color: #0056A6; }
+            .field { margin-bottom: 8px; }
+            .field strong { display: inline-block; width: 160px; }
+            .budget-badge { background: #f59e42; color: white; padding: 4px 8px; border-radius: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">LESELEC INGENIERÍA</div>
+            <h2>Presupuesto de Reparación - ${repair.numeroIngreso}</h2>
+            <span class="budget-badge">PRESUPUESTO</span>
+          </div>
+          <div class="section">
+            <h3>Información del Cliente</h3>
+            <div class="field"><strong>Cliente:</strong> ${client ? `${client.nombre} ${client.apellido}` : "Cliente no encontrado"}</div>
+            <div class="field"><strong>DNI/CUIL:</strong> ${client?.dniCuil || "N/A"}</div>
+            <div class="field"><strong>Tipo:</strong> ${client?.tipoCliente || "N/A"}</div>
+            <div class="field"><strong>Teléfono:</strong> ${client?.telefono || "N/A"}</div>
+            <div class="field"><strong>Email:</strong> ${client?.email || "N/A"}</div>
+            <div class="field"><strong>Dirección:</strong> ${client?.direccion || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Información del Equipo</h3>
+            <div class="field"><strong>Fecha de Ingreso:</strong> ${new Date(repair.fechaIngreso).toLocaleDateString("es-AR")}</div>
+            <div class="field"><strong>N° de Ingreso:</strong> ${repair.numeroIngreso}</div>
+            <div class="field"><strong>Equipo:</strong> ${repair.equipo}</div>
+            <div class="field"><strong>Marca:</strong> ${repair.marcaEquipo}</div>
+            <div class="field"><strong>N° Serie:</strong> ${repair.numeroSerie}</div>
+            <div class="field"><strong>Potencia:</strong> ${repair.potencia || "N/A"}</div>
+            <div class="field"><strong>Tensión:</strong> ${repair.tension || "N/A"}</div>
+            <div class="field"><strong>Revoluciones:</strong> ${repair.revoluciones || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Presupuesto</h3>
+            <div class="field"><strong>Diagnóstico de Falla:</strong> ${repair.diagnosticoFalla || "-"}</div>
+            <div class="field"><strong>Descripción del Proceso:</strong> ${repair.descripcionProceso || "-"}</div>
+            <div class="field"><strong>Repuestos:</strong> ${repair.repuestos || "-"}</div>
+            <div class="field"><strong>Importe Total:</strong> <b style='color:green;'>$${repair.importe || "-"}</b></div>
+          </div>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -504,6 +587,16 @@ export default function BudgetPage() {
                               <Button variant="ghost" size="icon" onClick={() => handleEditBudget(repair)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
+                              {hasBudget && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Imprimir presupuesto"
+                                  onClick={() => handlePrintBudget(repair)}
+                                >
+                                  <FileText className="h-4 w-4 text-blue-600" />
+                                </Button>
+                              )}
                               {hasBudget && (
                                 <Button
                                   variant="ghost"
@@ -743,54 +836,6 @@ export default function BudgetPage() {
                 </CardContent>
               </Card>
 
-              {/* Budget Information */}
-              {(viewingRepair.diagnosticoFalla || viewingRepair.importe) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Información de Presupuesto</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {viewingRepair.diagnosticoFalla && (
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Diagnóstico de Falla</Label>
-                        <p className="text-foreground">{viewingRepair.diagnosticoFalla}</p>
-                      </div>
-                    )}
-                    {viewingRepair.descripcionProceso && (
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Proceso de Reparación</Label>
-                        <p className="text-foreground">{viewingRepair.descripcionProceso}</p>
-                      </div>
-                    )}
-                    {viewingRepair.repuestos && (
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Repuestos</Label>
-                        <p className="text-foreground">{viewingRepair.repuestos}</p>
-                      </div>
-                    )}
-                    {viewingRepair.importe && (
-                      <div>
-                        <Label className="text-sm font-medium text-muted-foreground">Importe Total</Label>
-                        <p className="text-foreground text-xl font-bold text-green-600">${viewingRepair.importe}</p>
-                      </div>
-                    )}
-                    {viewingRepair.fechaPresupuesto && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Fecha Presupuesto</Label>
-                          <p className="text-foreground">
-                            {new Date(viewingRepair.fechaPresupuesto).toLocaleDateString("es-AR")}
-                          </p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Presupuestado por</Label>
-                          <p className="text-foreground">{viewingRepair.presupuestadoPor}</p>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
             </div>
           )}
         </DialogContent>

@@ -398,7 +398,8 @@ export default function ReceptionPage() {
     })
     setEditingRepair(null)
     setIsDialogOpen(false)
-    // Opcional: recargar reparaciones desde Supabase
+    // Recargar reparaciones desde Supabase
+    fetchRepairs();
   }
 
   const handleEdit = (repair: Repair) => {

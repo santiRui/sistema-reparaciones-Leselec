@@ -63,8 +63,12 @@ CREATE TABLE trabajos_reparacion (
     id SERIAL PRIMARY KEY,
     reparacion_id INTEGER NOT NULL REFERENCES reparaciones(id) ON DELETE CASCADE,
     encargado_id INTEGER REFERENCES personal(id),
+    supervisor_id INTEGER REFERENCES personal(id),
     tecnico_id INTEGER REFERENCES personal(id),
     estado_reparacion VARCHAR(50) NOT NULL,
+    prioridad VARCHAR(50),
+    fecha_inicio DATE,
+    fecha_fin DATE,
     observaciones TEXT
 );
 
