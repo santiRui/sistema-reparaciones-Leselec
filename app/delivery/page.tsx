@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Search, Edit, Eye, Package, DollarSign, ArrowRight, FileText, User } from "lucide-react"
+import { Search, Edit, Eye, Package, DollarSign, ArrowRight, FileText, User, Printer } from "lucide-react"
 
 interface Client {
   id: string
@@ -96,9 +96,98 @@ export default function DeliveryPage() {
     dniRetirante: "",
     nombreRetirante: "",
     apellidoRetirante: "",
-    firmaRetirante: "",
     estadoEntrega: "pendiente" as "pendiente" | "entregado",
   })
+
+  // Cargar reparaciones en etapa 'entrega' desde Supabase y combinar con datos de entregas
+  const loadDeliveryRepairs = async () => {
+    const { data, error } = await supabase
+      .from('reparaciones')
+      .select('*')
+      .eq('estado_actual', 'entrega')
+    if (error) {
+      console.error('Error cargando reparaciones para entrega:', error)
+    } else if (data) {
+      // Traer todas las entregas de una sola vez
+      const { data: entregas } = await supabase
+        .from('entregas')
+        .select('*')
+      // Buscar datos de cliente y equipo para cada reparación
+      const repairsWithDetails = await Promise.all((data || []).map(async (rep: any, idx: number) => {
+        const { data: equipo } = await supabase
+          .from('equipos')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .single();
+        const { data: cliente } = await supabase
+          .from('clientes')
+          .select('*')
+          .eq('id', rep.cliente_id)
+          .single();
+        const { data: presupuesto } = await supabase
+          .from('presupuestos')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .order('id', { ascending: false })
+          .limit(1)
+          .single();
+        const { data: trabajo } = await supabase
+          .from('trabajos_reparacion')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .single();
+        // Buscar entrega correspondiente
+        const entrega = entregas?.find((e: any) => e.reparacion_id === rep.id) || {};
+        return {
+          id: rep.id.toString(),
+          numeroIngreso: `R-${new Date(rep.fecha_creacion).getFullYear()}-${(idx+1).toString().padStart(3, '0')}`,
+          fechaIngreso: rep.fecha_creacion.split('T')[0],
+          recepcionista: '',
+          clienteId: rep.cliente_id.toString(),
+          cliente: cliente ? {
+            id: cliente.id.toString(),
+            nombre: cliente.nombre,
+            apellido: cliente.apellido,
+            dniCuil: cliente.dni_cuil,
+            tipoCliente: cliente.tipo_cliente,
+            telefono: cliente.telefono,
+            email: cliente.email,
+            direccion: cliente.direccion,
+          } : undefined,
+          equipo: equipo?.tipo_equipo || '',
+          marcaEquipo: equipo?.marca || '',
+          numeroSerie: equipo?.numero_serie || '',
+          elementosFaltantes: rep.elementos_faltantes || '',
+          accesorios: rep.accesorios || '',
+          potencia: equipo?.potencia || '',
+          tension: equipo?.tension || '',
+          revoluciones: equipo?.revoluciones || '',
+          numeroRemito: rep.numero_remito || '',
+          numeroOrdenCompra: rep.numero_orden_compra || '',
+          observaciones: rep.observaciones_recepcion || '',
+          estado: rep.estado_actual,
+          fechaCreacion: rep.fecha_creacion,
+          diagnosticoFalla: presupuesto?.diagnostico_falla || '',
+          descripcionProceso: presupuesto?.descripcion_proceso || '',
+          repuestos: presupuesto?.repuestos_necesarios || '',
+          importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+          encargadoReparacion: trabajo?.encargado_reparacion || '',
+          armador: trabajo?.armador || '',
+          observacionesReparacion: trabajo?.observaciones_reparacion || '',
+          estadoReparacion: trabajo?.estado_reparacion || 'pendiente',
+          // Datos de entrega combinados
+          cajero: entrega.cajero_id || '',
+          fechaRetiro: entrega.fecha_retiro || '',
+          dniRetirante: entrega.dni_retirante || '',
+          nombreRetirante: entrega.nombre_retirante || '',
+          apellidoRetirante: entrega.apellido_retirante || '',
+          estadoEntrega: entrega.estado_entrega || 'pendiente',
+          fechaEntrega: rep.fecha_entrega || '',
+        };
+      }));
+      setDeliveryRepairs(repairsWithDetails);
+    }
+  };
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
@@ -119,18 +208,126 @@ export default function DeliveryPage() {
       setClients(JSON.parse(savedClients))
     }
 
-    // Load repairs
-    const savedRepairs = localStorage.getItem("repairs")
-    if (savedRepairs) {
-      setRepairs(JSON.parse(savedRepairs))
-    }
+    loadDeliveryRepairs();
+
+    // Cargar reparaciones completadas para mover a entrega
+    const loadCompletedRepairs = async () => {
+      const { data, error } = await supabase
+        .from('reparaciones')
+        .select('*')
+        .eq('estado_actual', 'reparacion')
+      if (error) {
+        console.error('Error cargando reparaciones completadas:', error)
+      } else if (data) {
+        // Buscar sólo las que tienen estadoReparacion 'completada' en trabajos_reparacion
+        const completed = [];
+        for (const rep of data) {
+          const { data: trabajo } = await supabase
+            .from('trabajos_reparacion')
+            .select('*')
+            .eq('reparacion_id', rep.id)
+            .single();
+          if (trabajo && trabajo.estado_reparacion === 'completada') {
+            // Buscar cliente y equipo
+            const { data: equipo } = await supabase
+              .from('equipos')
+              .select('*')
+              .eq('reparacion_id', rep.id)
+              .single();
+            const { data: cliente } = await supabase
+              .from('clientes')
+              .select('*')
+              .eq('id', rep.cliente_id)
+              .single();
+            const { data: presupuesto } = await supabase
+              .from('presupuestos')
+              .select('*')
+              .eq('reparacion_id', rep.id)
+              .order('id', { ascending: false })
+              .limit(1)
+              .single();
+            completed.push({
+              id: rep.id.toString(),
+              numeroIngreso: `R-${new Date(rep.fecha_creacion).getFullYear()}-${(completed.length+1).toString().padStart(3, '0')}`,
+              fechaIngreso: rep.fecha_creacion.split('T')[0],
+              recepcionista: '',
+              clienteId: rep.cliente_id.toString(),
+              cliente: cliente ? {
+                id: cliente.id.toString(),
+                nombre: cliente.nombre,
+                apellido: cliente.apellido,
+                dniCuil: cliente.dni_cuil,
+                tipoCliente: cliente.tipo_cliente,
+                telefono: cliente.telefono,
+                email: cliente.email,
+                direccion: cliente.direccion,
+              } : undefined,
+              equipo: equipo?.tipo_equipo || '',
+              marcaEquipo: equipo?.marca || '',
+              numeroSerie: equipo?.numero_serie || '',
+              elementosFaltantes: rep.elementos_faltantes || '',
+              accesorios: rep.accesorios || '',
+              potencia: equipo?.potencia || '',
+              tension: equipo?.tension || '',
+              revoluciones: equipo?.revoluciones || '',
+              numeroRemito: rep.numero_remito || '',
+              numeroOrdenCompra: rep.numero_orden_compra || '',
+              observaciones: rep.observaciones_recepcion || '',
+              estado: rep.estado_actual,
+              fechaCreacion: rep.fecha_creacion,
+              diagnosticoFalla: presupuesto?.diagnostico_falla || '',
+              descripcionProceso: presupuesto?.descripcion_proceso || '',
+              repuestos: presupuesto?.repuestos_necesarios || '',
+              importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+              encargadoReparacion: trabajo?.encargado_reparacion || '',
+              armador: trabajo?.armador || '',
+              observacionesReparacion: trabajo?.observaciones_reparacion || '',
+              estadoReparacion: trabajo?.estado_reparacion || 'pendiente',
+            });
+          }
+        }
+        setCompletedRepairs(completed);
+      }
+    };
+
+    loadDeliveryRepairs();
+    loadCompletedRepairs();
   }, [router])
 
-  const handleDeliverySubmit = (e: React.FormEvent) => {
+  const handleDeliverySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!editingRepair) return
 
+    // Guardar en tabla entregas
+    const { error: entregaError } = await supabase
+      .from('entregas')
+      .upsert([
+        {
+          reparacion_id: Number(editingRepair.id),
+          cajero_id: currentUser?.id || null,
+          fecha_retiro: deliveryFormData.fechaRetiro || null,
+          nombre_retirante: deliveryFormData.nombreRetirante,
+          apellido_retirante: deliveryFormData.apellidoRetirante,
+          dni_retirante: deliveryFormData.dniRetirante,
+          estado_entrega: deliveryFormData.estadoEntrega,
+        }
+      ], { onConflict: 'reparacion_id' })
+    if (entregaError) {
+      alert('Error guardando entrega: ' + entregaError.message)
+      return
+    }
+
+    // Actualizar estado en reparaciones
+    await supabase
+      .from('reparaciones')
+      .update({
+        estado_actual: 'entrega',
+        fecha_actualizacion: new Date().toISOString()
+      })
+      .eq('id', editingRepair.id)
+
+    // Opcional: actualizar estado local si quieres feedback inmediato
     const updatedRepair: Repair = {
       ...editingRepair,
       ...deliveryFormData,
@@ -139,22 +336,27 @@ export default function DeliveryPage() {
           ? new Date().toISOString().split("T")[0]
           : editingRepair.fechaEntrega,
     }
-
     const updatedRepairs = repairs.map((repair) => (repair.id === editingRepair.id ? updatedRepair : repair))
-
     setRepairs(updatedRepairs)
-    localStorage.setItem("repairs", JSON.stringify(updatedRepairs))
 
-    // Reset form
-    setDeliveryFormData({
-      cajero: currentUser?.username || "",
-      fechaRetiro: "",
-      dniRetirante: "",
-      nombreRetirante: "",
-      apellidoRetirante: "",
-      firmaRetirante: "",
-      estadoEntrega: "pendiente",
-    })
+    // Recargar lista y datos del formulario
+    await loadDeliveryRepairs();
+    if (editingRepair) {
+      // Buscar en entregas datos actualizados
+      const { data: entrega } = await supabase
+        .from('entregas')
+        .select('*')
+        .eq('reparacion_id', editingRepair.id)
+        .single();
+      setDeliveryFormData({
+        cajero: currentUser?.username || "",
+        fechaRetiro: entrega?.fecha_retiro || "",
+        dniRetirante: entrega?.dni_retirante || "",
+        nombreRetirante: entrega?.nombre_retirante || "",
+        apellidoRetirante: entrega?.apellido_retirante || "",
+        estadoEntrega: entrega?.estado_entrega || "pendiente",
+      });
+    }
     setEditingRepair(null)
     setIsDeliveryDialogOpen(false)
   }
@@ -166,23 +368,27 @@ export default function DeliveryPage() {
     localStorage.setItem("repairs", JSON.stringify(updatedRepairs))
   }
 
-  const handleEditDelivery = (repair: Repair) => {
+  const handleEditDelivery = async (repair: Repair) => {
+    // Buscar en entregas
+    const { data: entrega } = await supabase
+      .from('entregas')
+      .select('*')
+      .eq('reparacion_id', repair.id)
+      .single();
     setEditingRepair(repair)
     setDeliveryFormData({
-      cajero: repair.cajero || currentUser?.username || "",
-      fechaRetiro: repair.fechaRetiro || "",
-      dniRetirante: repair.dniRetirante || "",
-      nombreRetirante: repair.nombreRetirante || "",
-      apellidoRetirante: repair.apellidoRetirante || "",
-      firmaRetirante: repair.firmaRetirante || "",
-      estadoEntrega: repair.estadoEntrega || "pendiente",
+      cajero: currentUser?.username || "",
+      fechaRetiro: entrega?.fecha_retiro || "",
+      dniRetirante: entrega?.dni_retirante || "",
+      nombreRetirante: entrega?.nombre_retirante || "",
+      apellidoRetirante: entrega?.apellido_retirante || "",
+      estadoEntrega: entrega?.estado_entrega || "pendiente",
     })
     setIsDeliveryDialogOpen(true)
   }
 
   const handleView = (repair: Repair) => {
-    const client = clients.find((c) => c.id === repair.clienteId)
-    setViewingRepair({ ...repair, cliente: client })
+    setViewingRepair({ ...repair, cliente: repair.cliente })
   }
 
   const handleMoveFromRepair = (repairId: string) => {
@@ -202,6 +408,162 @@ export default function DeliveryPage() {
 
   // Reparaciones cargadas desde Supabase para la etapa 'entrega'
   const [deliveryRepairs, setDeliveryRepairs] = useState<Repair[]>([]);
+
+  // Mover a reparaciones finalizadas
+  const handleMoveToCompleted = async (repair: Repair) => {
+    // Actualizar estado en la base de datos (puede ser un campo 'finalizada' en entregas o reparaciones)
+    await supabase
+      .from('reparaciones')
+      .update({ estado_actual: 'finalizada', fecha_actualizacion: new Date().toISOString() })
+      .eq('id', repair.id);
+    // Recargar lista automáticamente
+    await loadDeliveryRepairs();
+  };
+
+  // Imprimir entrega
+  const handlePrintDelivery = (repair: Repair) => {
+    const printContent = `
+      <html>
+        <head>
+          <title>Entrega ${repair.numeroIngreso}</title>
+          <style>
+            @media print {
+              html, body { width: 210mm; height: 297mm; }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 10mm 8mm 10mm 8mm;
+              font-size: 12px;
+              color: #222;
+              background: #fff;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .logo {
+              font-size: 20px;
+              font-weight: bold;
+              color: #0056A6;
+            }
+            .badge {
+              background: #2d8f5a;
+              color: white;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 11px;
+              margin-left: 8px;
+            }
+            .section {
+              margin-bottom: 8px;
+              border: 1px solid #ddd;
+              padding: 7px 10px;
+              border-radius: 5px;
+              page-break-inside: avoid;
+            }
+            .section h3 {
+              margin-top: 0;
+              margin-bottom: 5px;
+              font-size: 14px;
+              color: #0056A6;
+            }
+            .fields {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 12px;
+            }
+            .field {
+              flex: 1 1 180px;
+              margin-bottom: 4px;
+              min-width: 140px;
+            }
+            .field strong {
+              display: inline-block;
+              width: 110px;
+              font-size: 11px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">LESELEC INGENIERÍA</div>
+            <h2>Entrega - ${repair.numeroIngreso}</h2>
+            <span class="badge">ENTREGA</span>
+          </div>
+          <div class="section">
+            <h3>Recepción</h3>
+            <div class="field"><strong>Fecha de Ingreso:</strong> ${new Date(repair.fechaIngreso).toLocaleDateString("es-AR")}</div>
+            <div class="field"><strong>Recepcionista:</strong> ${repair.recepcionista || '-'}</div>
+            <div class="field"><strong>Observaciones de Recepción:</strong> ${repair.observaciones || '-'}</div>
+          </div>
+          <div class="section">
+            <h3>Información del Cliente</h3>
+            <div class="field"><strong>Cliente:</strong> ${repair.cliente ? `${repair.cliente.nombre} ${repair.cliente.apellido}` : "Cliente no encontrado"}</div>
+            <div class="field"><strong>DNI/CUIL:</strong> ${repair.cliente?.dniCuil || "N/A"}</div>
+            <div class="field"><strong>Tipo:</strong> ${repair.cliente?.tipoCliente || "N/A"}</div>
+            <div class="field"><strong>Teléfono:</strong> ${repair.cliente?.telefono || "N/A"}</div>
+            <div class="field"><strong>Email:</strong> ${repair.cliente?.email || "N/A"}</div>
+            <div class="field"><strong>Dirección:</strong> ${repair.cliente?.direccion || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Equipo</h3>
+            <div class="field"><strong>Equipo:</strong> ${repair.equipo}</div>
+            <div class="field"><strong>Marca:</strong> ${repair.marcaEquipo}</div>
+            <div class="field"><strong>N° Serie:</strong> ${repair.numeroSerie}</div>
+            <div class="field"><strong>Potencia:</strong> ${repair.potencia || "N/A"}</div>
+            <div class="field"><strong>Tensión:</strong> ${repair.tension || "N/A"}</div>
+            <div class="field"><strong>Revoluciones:</strong> ${repair.revoluciones || "N/A"}</div>
+          </div>
+          <div class="section">
+            <h3>Presupuesto</h3>
+            <div class="field"><strong>Diagnóstico de Falla:</strong> ${repair.diagnosticoFalla || '-'}</div>
+            <div class="field"><strong>Descripción del Proceso:</strong> ${repair.descripcionProceso || '-'}</div>
+            <div class="field"><strong>Repuestos:</strong> ${repair.repuestos || '-'}</div>
+            <div class="field"><strong>Importe Total:</strong> <b style='color:green;'>$
+              ${repair.importe ? Number(repair.importe).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+            </b></div>
+          </div>
+          <div class="section">
+            <h3>Reparación</h3>
+            <div class="field"><strong>Encargado:</strong> ${repair.encargadoReparacion || '-'}</div>
+            <div class="field"><strong>Armador:</strong> ${repair.armador || '-'}</div>
+            <div class="field"><strong>Estado Reparación:</strong> ${repair.estadoReparacion || '-'}</div>
+            <div class="field"><strong>Observaciones Reparación:</strong> ${repair.observacionesReparacion || '-'}</div>
+          </div>
+          <div class="section">
+            <h3>Entrega</h3>
+            <div class="field"><strong>Nombre Retirante:</strong> ${repair.nombreRetirante || "-"} ${repair.apellidoRetirante || "-"}</div>
+            <div class="field"><strong>DNI Retirante:</strong> ${repair.dniRetirante || "-"}</div>
+            <div class="field"><strong>Fecha de Retiro:</strong> ${repair.fechaRetiro ? new Date(repair.fechaRetiro).toLocaleDateString("es-AR") : "-"}</div>
+            <div class="field"><strong>Estado de Entrega:</strong> ${repair.estadoEntrega === "entregado" ? "Entregado" : "Pendiente"}</div>
+          </div>
+        </body>
+      </html>
+    `;
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  // Finalizar entrega
+  const handleFinalizeDelivery = async (repair: Repair) => {
+    // Actualizar estado_entrega a 'entregado' en la tabla entregas
+    await supabase
+      .from('entregas')
+      .update({ estado_entrega: 'entregado' })
+      .eq('reparacion_id', repair.id);
+    // Opcional: actualizar fecha_entrega en reparaciones
+    await supabase
+      .from('reparaciones')
+      .update({ fecha_entrega: new Date().toISOString() })
+      .eq('id', repair.id);
+    // Recargar lista para que desaparezca del módulo actual
+    await loadDeliveryRepairs();
+  };
+
   // Reparaciones completadas para mover a entrega
   const [completedRepairs, setCompletedRepairs] = useState<Repair[]>([]);
 
@@ -364,10 +726,10 @@ export default function DeliveryPage() {
                           <TableCell className="font-mono font-medium">{repair.numeroIngreso}</TableCell>
                           <TableCell>
                             <div>
-                              <p className="font-medium">
-                                {client ? `${client.nombre} ${client.apellido}` : "Cliente no encontrado"}
-                              </p>
-                              <p className="text-sm text-muted-foreground">{client?.telefono}</p>
+                              <p className="font-medium">{repair.cliente ? `${repair.cliente.nombre} ${repair.cliente.apellido}` : "Cliente no encontrado"}</p>
+                              <p className="text-sm text-muted-foreground">{repair.cliente?.telefono || ""}</p>
+                              <p className="text-xs text-muted-foreground">{repair.cliente?.email || ""}</p>
+                              <p className="text-xs text-muted-foreground">{repair.cliente?.direccion || ""}</p>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -377,7 +739,7 @@ export default function DeliveryPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {repair.nombreRetirante ? (
+                            {repair.nombreRetirante || repair.apellidoRetirante ? (
                               <div>
                                 <p className="font-medium">
                                   {repair.nombreRetirante} {repair.apellidoRetirante}
@@ -389,8 +751,8 @@ export default function DeliveryPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={isDelivered ? "outline" : "secondary"}>
-                              {isDelivered ? "Entregado" : "Pendiente"}
+                            <Badge variant={repair.estadoEntrega === "entregado" ? "outline" : "secondary"}>
+                              {repair.estadoEntrega === "entregado" ? "Entregado" : "Pendiente"}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -403,17 +765,20 @@ export default function DeliveryPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button variant="ghost" size="icon" title="Imprimir datos" onClick={() => handlePrintDelivery(repair)}>
+                                <Printer className="h-4 w-4 text-blue-600" />
+                              </Button>
                               <Button variant="ghost" size="icon" onClick={() => handleView(repair)}>
                                 <Eye className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="icon" onClick={() => handleEditDelivery(repair)}>
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              {isDelivered && (
+                              {repair.estadoEntrega === "entregado" && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  onClick={() => handleMoveToBilling(repair)}
+                                  onClick={() => handleMoveToCompleted(repair)}
                                   className="text-green-600 hover:text-green-600"
                                 >
                                   <ArrowRight className="h-4 w-4" />
@@ -480,9 +845,11 @@ export default function DeliveryPage() {
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Cliente</Label>
                       <p className="text-foreground">
-                        {clients.find((c) => c.id === editingRepair.clienteId)?.nombre}{" "}
-                        {clients.find((c) => c.id === editingRepair.clienteId)?.apellido}
+                        {editingRepair?.cliente ? `${editingRepair.cliente.nombre} ${editingRepair.cliente.apellido}` : "Cliente no encontrado"}
                       </p>
+                      <p className="text-xs text-muted-foreground">{editingRepair?.cliente?.telefono || ""}</p>
+                      <p className="text-xs text-muted-foreground">{editingRepair?.cliente?.email || ""}</p>
+                      <p className="text-xs text-muted-foreground">{editingRepair?.cliente?.direccion || ""}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Importe</Label>
@@ -563,17 +930,7 @@ export default function DeliveryPage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="firmaRetirante">Firma/Observaciones del Retirante</Label>
-                      <Textarea
-                        id="firmaRetirante"
-                        value={deliveryFormData.firmaRetirante}
-                        onChange={(e) => setDeliveryFormData({ ...deliveryFormData, firmaRetirante: e.target.value })}
-                        placeholder="Confirmación de recepción, observaciones, etc."
-                        rows={2}
-                      />
-                    </div>
-                  </div>
+                                      </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="estadoEntrega">Estado de Entrega *</Label>
@@ -609,7 +966,6 @@ export default function DeliveryPage() {
                       dniRetirante: "",
                       nombreRetirante: "",
                       apellidoRetirante: "",
-                      firmaRetirante: "",
                       estadoEntrega: "pendiente",
                     })
                   }}
@@ -647,6 +1003,9 @@ export default function DeliveryPage() {
                           ? `${viewingRepair.cliente.nombre} ${viewingRepair.cliente.apellido}`
                           : "Cliente no encontrado"}
                       </p>
+                      <p className="text-xs text-muted-foreground">{viewingRepair.cliente?.telefono || ""}</p>
+                      <p className="text-xs text-muted-foreground">{viewingRepair.cliente?.email || ""}</p>
+                      <p className="text-xs text-muted-foreground">{viewingRepair.cliente?.direccion || ""}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Teléfono</Label>
@@ -756,13 +1115,7 @@ export default function DeliveryPage() {
                             <p className="text-foreground font-mono">{viewingRepair.dniRetirante}</p>
                           </div>
                         </div>
-                        {viewingRepair.firmaRetirante && (
-                          <div className="mt-4">
-                            <Label className="text-sm font-medium text-muted-foreground">Firma/Observaciones</Label>
-                            <p className="text-foreground">{viewingRepair.firmaRetirante}</p>
-                          </div>
-                        )}
-                      </div>
+                                              </div>
                     </>
                   )}
 

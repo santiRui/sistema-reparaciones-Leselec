@@ -65,61 +65,93 @@ export default function CompletedPage() {
   const [selectedRepair, setSelectedRepair] = useState<any>(null)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [completedRepairs, setCompletedRepairs] = useState<any[]>([])
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [showMonthSelector, setShowMonthSelector] = useState(false);
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
   useEffect(() => {
     const fetchCompletedRepairs = async () => {
-      const { data: repData, error: repError } = await supabase
-        .from('reparaciones')
+      // Buscar todas las entregas finalizadas
+      const { data: entregas, error: entregasError } = await supabase
+        .from('entregas')
         .select('*')
-        .in('estado_actual', ['facturacion', 'finalizada'])
-        .order('id', { ascending: true })
-      if (repError) return
-      const repairsWithEquipos = await Promise.all((repData || []).map(async (rep: any, idx: number) => {
+        .eq('estado_entrega', 'entregado')
+      if (entregasError) return
+      // Para cada entrega, buscar la reparación y sus detalles
+      const repairsWithDetails = await Promise.all((entregas || []).map(async (entrega: any, idx: number) => {
+        const { data: rep } = await supabase
+          .from('reparaciones')
+          .select('*')
+          .eq('id', entrega.reparacion_id)
+          .single();
+        if (!rep) return null;
         const { data: equipo } = await supabase
           .from('equipos')
           .select('*')
           .eq('reparacion_id', rep.id)
-          .single()
-        let recepcionista = ''
-        if (rep.creado_por) {
-          const { data: user } = await supabase
-            .from('personal')
-            .select('nombre_completo')
-            .eq('id', rep.creado_por)
-            .single()
-          recepcionista = user?.nombre_completo || ''
-        }
+          .single();
+        const { data: cliente } = await supabase
+          .from('clientes')
+          .select('*')
+          .eq('id', rep.cliente_id)
+          .single();
+        const { data: presupuesto } = await supabase
+          .from('presupuestos')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .order('id', { ascending: false })
+          .limit(1)
+          .single();
+        const { data: trabajo } = await supabase
+          .from('trabajos_reparacion')
+          .select('*')
+          .eq('reparacion_id', rep.id)
+          .single();
         return {
           id: rep.id.toString(),
           numeroIngreso: `R-${new Date(rep.fecha_creacion).getFullYear()}-${(idx+1).toString().padStart(3, '0')}`,
           fechaIngreso: rep.fecha_creacion.split('T')[0],
-          recepcionista,
-          clienteId: rep.cliente_id.toString(),
+          cliente: cliente ? `${cliente.nombre} ${cliente.apellido}` : '',
+          tipoCliente: cliente?.tipo_cliente || '',
+          dniCuil: cliente?.dni_cuil || '',
+          telefono: cliente?.telefono || '',
+          email: cliente?.email || '',
+          direccion: cliente?.direccion || '',
           equipo: equipo?.tipo_equipo || '',
           marcaEquipo: equipo?.marca || '',
           numeroSerie: equipo?.numero_serie || '',
-          elementosFaltantes: rep.elementos_faltantes || '',
-          accesorios: rep.accesorios || '',
           potencia: equipo?.potencia || '',
           tension: equipo?.tension || '',
           revoluciones: equipo?.revoluciones || '',
-          numeroRemito: rep.numero_remito || '',
-          numeroOrdenCompra: rep.numero_orden_compra || '',
+          fechaEntrega: entrega.fecha_retiro || '',
+          nombreRetirante: entrega.nombre_retirante || '',
+          apellidoRetirante: entrega.apellido_retirante || '',
+          dniRetirante: entrega.dni_retirante || '',
+          estadoEntrega: entrega.estado_entrega || '',
+          diagnostico: presupuesto?.diagnostico_falla || '',
+          descripcionProceso: presupuesto?.descripcion_proceso || '',
+          repuestos: presupuesto?.repuestos_necesarios || '',
+          monto: presupuesto?.importe_total || '',
+          encargado: trabajo?.encargado_reparacion || '',
+          armador: trabajo?.armador || '',
+          estadoReparacion: trabajo?.estado_reparacion || '',
+          observacionesReparacion: trabajo?.observaciones || '',
+          cajero: entrega.cajero_id || '',
+          recepcionista: rep.recepcionista || '',
           observaciones: rep.observaciones_recepcion || '',
-          estado: rep.estado_actual,
-          fechaCreacion: rep.fecha_creacion,
         }
       }))
-      setCompletedRepairs(repairsWithEquipos)
+      setCompletedRepairs(repairsWithDetails.filter(Boolean))
     }
     fetchCompletedRepairs()
   }, [])
 
-  const filteredRepairs = repairs.filter(
+  const filteredRepairs = completedRepairs.filter(
     (repair) =>
-      repair.entryNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      repair.client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      repair.equipment.toLowerCase().includes(searchTerm.toLowerCase()),
+      (repair.numeroIngreso || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (repair.cliente || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (repair.equipo || '').toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   const handleViewRepair = (repair: any) => {
@@ -131,61 +163,119 @@ export default function CompletedPage() {
     const printContent = `
       <html>
         <head>
-          <title>Reparación ${repair.entryNumber}</title>
+          <title>Entrega ${repair.numeroIngreso}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .logo { font-size: 24px; font-weight: bold; color: #0056A6; }
-            .section { margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; }
-            .section h3 { margin-top: 0; color: #0056A6; }
-            .field { margin-bottom: 8px; }
-            .field strong { display: inline-block; width: 150px; }
-            .completed-badge { background: #10B981; color: white; padding: 4px 8px; border-radius: 4px; }
+            @media print {
+              html, body { width: 210mm; height: 297mm; }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 10mm 8mm 10mm 8mm;
+              font-size: 12px;
+              color: #222;
+              background: #fff;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 12px;
+            }
+            .logo {
+              font-size: 22px;
+              font-weight: bold;
+              color: #0056A6;
+              margin-bottom: 4px;
+            }
+            .badge {
+              background: #2d8f5a;
+              color: white;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-size: 11px;
+              margin-left: 8px;
+              letter-spacing: 1px;
+            }
+            .section {
+              margin-bottom: 12px;
+              border: 1px solid #ddd;
+              padding: 12px 18px;
+              border-radius: 5px;
+              page-break-inside: avoid;
+            }
+            .section h3 {
+              margin-top: 0;
+              margin-bottom: 8px;
+              font-size: 15px;
+              color: #0056A6;
+            }
+            .field {
+              margin-bottom: 4px;
+            }
+            .field strong {
+              display: inline-block;
+              width: 170px;
+              font-size: 12px;
+            }
+            .importe {
+              color: green;
+              font-weight: bold;
+            }
           </style>
         </head>
         <body>
           <div class="header">
             <div class="logo">LESELEC INGENIERÍA</div>
-            <h2>Reparación Finalizada - ${repair.entryNumber}</h2>
-            <span class="completed-badge">COMPLETADA</span>
+            <h2>Entrega - ${repair.numeroIngreso}</h2>
+            <span class="badge">ENTREGA</span>
           </div>
-          
           <div class="section">
-            <h3>Información de Recepción</h3>
-            <div class="field"><strong>Fecha de Ingreso:</strong> ${repair.entryDate}</div>
-            <div class="field"><strong>N° de Ingreso:</strong> ${repair.entryNumber}</div>
-            <div class="field"><strong>Cliente:</strong> ${repair.client.name}</div>
-            <div class="field"><strong>Tipo:</strong> ${repair.client.type}</div>
-            <div class="field"><strong>Equipo:</strong> ${repair.equipment}</div>
-            <div class="field"><strong>Marca:</strong> ${repair.brand}</div>
-            <div class="field"><strong>N° Serie:</strong> ${repair.serialNumber}</div>
-            <div class="field"><strong>Potencia:</strong> ${repair.power}</div>
-            <div class="field"><strong>Tensión:</strong> ${repair.voltage}</div>
+            <h3>Recepción</h3>
+            <div class="field"><strong>Fecha de Ingreso:</strong> ${repair.fechaIngreso}</div>
+            <div class="field"><strong>Recepcionista:</strong> ${repair.recepcionista || '-'}</div>
+            <div class="field"><strong>Observaciones de Recepción:</strong> ${repair.observaciones || '-'}</div>
           </div>
-
           <div class="section">
-            <h3>Diagnóstico y Presupuesto</h3>
-            <div class="field"><strong>Diagnóstico:</strong> ${repair.diagnosis}</div>
-            <div class="field"><strong>Monto:</strong> $${repair.budgetAmount?.toLocaleString()}</div>
+            <h3>Información del Cliente</h3>
+            <div class="field"><strong>Cliente:</strong> ${repair.cliente}</div>
+            <div class="field"><strong>DNI/CUIL:</strong> ${repair.dniCuil || '-'}</div>
+            <div class="field"><strong>Tipo:</strong> ${repair.tipoCliente || '-'}</div>
+            <div class="field"><strong>Teléfono:</strong> ${repair.telefono || '-'}</div>
+            <div class="field"><strong>Email:</strong> ${repair.email || '-'}</div>
+            <div class="field"><strong>Dirección:</strong> ${repair.direccion || '-'}</div>
           </div>
-
+          <div class="section">
+            <h3>Equipo</h3>
+            <div class="field"><strong>Equipo:</strong> ${repair.equipo}</div>
+            <div class="field"><strong>Marca:</strong> ${repair.marcaEquipo}</div>
+            <div class="field"><strong>N° Serie:</strong> ${repair.numeroSerie}</div>
+            <div class="field"><strong>Potencia:</strong> ${repair.potencia || '-'}</div>
+            <div class="field"><strong>Tensión:</strong> ${repair.tension || '-'}</div>
+            <div class="field"><strong>Revoluciones:</strong> ${repair.revoluciones || '-'}</div>
+          </div>
+          <div class="section">
+            <h3>Presupuesto</h3>
+            <div class="field"><strong>Diagnóstico de Falla:</strong> ${repair.diagnostico || '-'}</div>
+            <div class="field"><strong>Descripción del Proceso:</strong> ${repair.descripcionProceso || '-'}</div>
+            <div class="field"><strong>Repuestos:</strong> ${repair.repuestos || '-'}</div>
+            <div class="field"><strong>Importe Total:</strong> <span class="importe">
+              $${repair.monto ? Number(repair.monto).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</span></div>
+          </div>
           <div class="section">
             <h3>Reparación</h3>
-            <div class="field"><strong>Encargado:</strong> ${repair.repairManager}</div>
-            <div class="field"><strong>Armador:</strong> ${repair.assembler}</div>
+            <div class="field"><strong>Encargado:</strong> ${repair.encargado || '-'}</div>
+            <div class="field"><strong>Armador:</strong> ${repair.armador || '-'}</div>
+            <div class="field"><strong>Estado Reparación:</strong> ${repair.estadoReparacion || '-'}</div>
+            <div class="field"><strong>Observaciones Reparación:</strong> ${repair.observacionesReparacion || '-'}</div>
           </div>
-
           <div class="section">
             <h3>Entrega</h3>
-            <div class="field"><strong>Cajero:</strong> ${repair.cashier}</div>
-            <div class="field"><strong>Fecha de Retiro:</strong> ${repair.pickupDate}</div>
-            <div class="field"><strong>Retirante:</strong> ${repair.pickupPerson}</div>
-            <div class="field"><strong>DNI:</strong> ${repair.pickupId}</div>
-            <div class="field"><strong>Fecha Finalización:</strong> ${repair.completionDate}</div>
+            <div class="field"><strong>Nombre Retirante:</strong> ${repair.nombreRetirante || '-'}</div>
+            <div class="field"><strong>DNI Retirante:</strong> ${repair.dniRetirante || '-'}</div>
+            <div class="field"><strong>Fecha de Retiro:</strong> ${repair.fechaEntrega || '-'}</div>
+            <div class="field"><strong>Estado de Entrega:</strong> ${repair.estadoEntrega === 'entregado' ? 'Entregado' : 'Pendiente'}</div>
           </div>
         </body>
       </html>
-    `
+    `;
 
     const printWindow = window.open("", "_blank")
     if (printWindow) {
@@ -201,7 +291,7 @@ export default function CompletedPage() {
       <div className="flex-1 ml-64 flex flex-col">
         <div className="flex-1 p-8 space-y-8 overflow-auto">
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Entregas Finalizadas</h1>
+            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Reparaciones Finalizadas</h1>
             <p className="text-lg text-gray-600">Historial completo de reparaciones completadas</p>
           </div>
 
@@ -234,21 +324,33 @@ export default function CompletedPage() {
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-0 bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-blue-100 rounded-full">
-                    <Calendar className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">Este Mes</p>
-                    <p className="text-3xl font-bold text-blue-600">
-                      {repairs.filter((r) => new Date(r.completionDate).getMonth() === new Date().getMonth()).length}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Card className="shadow-sm border-0 bg-white cursor-pointer" onClick={() => setShowMonthSelector(true)}>
+  <CardContent className="p-6">
+    <div className="flex items-center space-x-4">
+      <div className="p-3 bg-blue-100 rounded-full">
+        <Calendar className="w-6 h-6 text-blue-600" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">
+          {monthNames[selectedMonth]} {selectedYear}
+        </p>
+        <p className="text-3xl font-bold text-blue-600">
+          {completedRepairs.filter((r) => {
+            const fecha = new Date(r.fechaEntrega);
+            return fecha.getMonth() === selectedMonth && fecha.getFullYear() === selectedYear;
+          }).length}
+        </p>
+      </div>
+    </div>
+    {showMonthSelector && (
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}>&lt;</button>
+        <span className="font-medium">{monthNames[selectedMonth]} {selectedYear}</span>
+        <button onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}>&gt;</button>
+      </div>
+    )}
+  </CardContent>
+</Card>
           </div>
 
           <Card className="shadow-sm border-0 bg-white">
@@ -265,9 +367,12 @@ export default function CompletedPage() {
                     <TableRow className="border-b border-gray-100">
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">N° Ingreso</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Cliente</TableHead>
+                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Tipo</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Equipo</TableHead>
-                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Ingreso</TableHead>
-                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Finalización</TableHead>
+                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Marca</TableHead>
+                      <TableHead className="px-6 py-4 font-semibold text-gray-900">N° Serie</TableHead>
+                                            <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Ingreso</TableHead>
+                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Entrega</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Estado</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Acciones</TableHead>
                     </TableRow>
@@ -278,27 +383,17 @@ export default function CompletedPage() {
                         key={repair.id}
                         className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
                       >
-                        <TableCell className="px-6 py-4 font-medium text-gray-900">{repair.entryNumber}</TableCell>
-                        <TableCell className="px-6 py-4">
-                          <div className="space-y-1">
-                            <p className="font-medium text-gray-900">{repair.client.name}</p>
-                            <Badge variant="outline" className="text-xs font-medium">
-                              {repair.client.type}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-6 py-4">
-                          <div className="space-y-1">
-                            <p className="font-medium text-gray-900">{repair.equipment}</p>
-                            <p className="text-sm text-gray-500">{repair.brand}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-6 py-4 text-gray-700">{repair.entryDate}</TableCell>
-                        <TableCell className="px-6 py-4 text-gray-700">{repair.completionDate}</TableCell>
+                        <TableCell className="px-6 py-4 font-medium text-gray-900">{repair.numeroIngreso}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.cliente}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.tipoCliente}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.equipo}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.marcaEquipo}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.numeroSerie}</TableCell>
+                                                <TableCell className="px-6 py-4">{repair.fechaIngreso}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.fechaEntrega}</TableCell>
                         <TableCell className="px-6 py-4">
                           <Badge className="bg-green-100 text-green-800 hover:bg-green-100 font-medium">
                             <CheckCircle className="w-3 h-3 mr-1" />
-                            Completada
                           </Badge>
                         </TableCell>
                         <TableCell className="px-6 py-4">
@@ -335,99 +430,55 @@ export default function CompletedPage() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Reparación Completada - {selectedRepair?.entryNumber}</DialogTitle>
+            <DialogTitle>Reparación Completada - {selectedRepair?.numeroIngreso}</DialogTitle>
             <DialogDescription>Información completa de la reparación finalizada</DialogDescription>
           </DialogHeader>
 
           {selectedRepair && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Reception Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Recepción</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <strong>Fecha:</strong> {selectedRepair.entryDate}
-                  </div>
-                  <div>
-                    <strong>Cliente:</strong> {selectedRepair.client.name}
-                  </div>
-                  <div>
-                    <strong>Equipo:</strong> {selectedRepair.equipment}
-                  </div>
-                  <div>
-                    <strong>Marca:</strong> {selectedRepair.brand}
-                  </div>
-                  <div>
-                    <strong>N° Serie:</strong> {selectedRepair.serialNumber}
-                  </div>
-                  <div>
-                    <strong>Potencia:</strong> {selectedRepair.power}
-                  </div>
-                  <div>
-                    <strong>Tensión:</strong> {selectedRepair.voltage}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Budget Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Presupuesto</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <strong>Diagnóstico:</strong> {selectedRepair.diagnosis}
-                  </div>
-                  <div>
-                    <strong>Monto:</strong> ${selectedRepair.budgetAmount?.toLocaleString()}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Repair Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Reparación</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <strong>Encargado:</strong> {selectedRepair.repairManager}
-                  </div>
-                  <div>
-                    <strong>Armador:</strong> {selectedRepair.assembler}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Delivery Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Entrega</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div>
-                    <strong>Cajero:</strong> {selectedRepair.cashier}
-                  </div>
-                  <div>
-                    <strong>Fecha Retiro:</strong> {selectedRepair.pickupDate}
-                  </div>
-                  <div>
-                    <strong>Retirante:</strong> {selectedRepair.pickupPerson}
-                  </div>
-                  <div>
-                    <strong>DNI:</strong> {selectedRepair.pickupId}
-                  </div>
-                  <div>
-                    <strong>Fecha Finalización:</strong> {selectedRepair.completionDate}
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="space-y-8">
+              {/* Recepción */}
+              <div>
+                <h2 className="text-xl font-bold mb-2">Recepción</h2>
+                <ul className="space-y-1">
+                  <li><strong>Fecha:</strong> {selectedRepair.fechaIngreso}</li>
+                  <li><strong>Cliente:</strong> {selectedRepair.cliente}</li>
+                  <li><strong>Tipo:</strong> {selectedRepair.tipoCliente}</li>
+                  <li><strong>Equipo:</strong> {selectedRepair.equipo}</li>
+                  <li><strong>Marca:</strong> {selectedRepair.marcaEquipo}</li>
+                  <li><strong>N° Serie:</strong> {selectedRepair.numeroSerie}</li>
+                </ul>
+              </div>
+              {/* Presupuesto */}
+              <div>
+                <h2 className="text-xl font-bold mb-2">Presupuesto</h2>
+                <ul className="space-y-1">
+                  <li><strong>Diagnóstico:</strong> {selectedRepair.diagnostico}</li>
+                  <li><strong>Monto:</strong> ${selectedRepair.monto?.toLocaleString()}</li>
+                </ul>
+              </div>
+              {/* Reparación */}
+              <div>
+                <h2 className="text-xl font-bold mb-2">Reparación</h2>
+                <ul className="space-y-1">
+                  <li><strong>Encargado:</strong> {selectedRepair.encargado}</li>
+                  <li><strong>Armador:</strong> {selectedRepair.armador}</li>
+                </ul>
+              </div>
+              {/* Entrega */}
+              <div>
+                <h2 className="text-xl font-bold mb-2">Entrega</h2>
+                <ul className="space-y-1">
+                  <li><strong>Cajero:</strong> {selectedRepair.cajero}</li>
+                  <li><strong>Fecha Retiro:</strong> {selectedRepair.fechaEntrega}</li>
+                  <li><strong>Retirante:</strong> {selectedRepair.nombreRetirante} {selectedRepair.apellidoRetirante}</li>
+                  <li><strong>DNI:</strong> {selectedRepair.dniRetirante}</li>
+                  <li><strong>Fecha Finalización:</strong> {selectedRepair.fechaFinalizacion}</li>
+                </ul>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
