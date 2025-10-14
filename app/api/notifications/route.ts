@@ -5,13 +5,18 @@ import { sendEmail } from "@/lib/email";
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 export async function POST(req: NextRequest) {
+  console.log('[DEBUG] Iniciando solicitud POST a /api/notifications');
   try {
     const body = await req.json();
+    console.log('[DEBUG] Cuerpo de la solicitud:', JSON.stringify(body, null, 2));
+    
     const { type, reparacionId, numeroIngreso } = body as {
       type: "recepcion" | "presupuesto" | "lista_entrega";
       reparacionId?: string | number;
       numeroIngreso?: string;
     };
+    
+    console.log('[DEBUG] Parámetros recibidos:', { type, reparacionId, numeroIngreso });
 
     if (!type) {
       return new Response(JSON.stringify({ error: "Falta 'type'" }), { status: 400 });
@@ -19,43 +24,121 @@ export async function POST(req: NextRequest) {
 
     // Buscar reparación por id o por numero de ingreso
     let reparacion: any | null = null;
-    if (reparacionId) {
-      const { data, error } = await supabase.from("reparaciones").select("*").eq("id", reparacionId).single();
-      if (error) throw error;
-      reparacion = data;
-    } else if (numeroIngreso) {
-      const { data, error } = await supabase.from("reparaciones").select("*").eq("numero_ingreso", numeroIngreso).single();
-      if (error) throw error;
-      reparacion = data;
-    } else {
-      return new Response(JSON.stringify({ error: "Se requiere 'reparacionId' o 'numeroIngreso'" }), { status: 400 });
+    try {
+      if (reparacionId) {
+        console.log(`[DEBUG] Buscando reparación por ID: ${reparacionId}`);
+        const { data, error } = await supabase.from("reparaciones").select("*").eq("id", reparacionId).single();
+        if (error) {
+          console.error('[ERROR] Error al buscar reparación por ID:', error);
+          throw error;
+        }
+        reparacion = data;
+      } else if (numeroIngreso) {
+        console.log(`[DEBUG] Buscando reparación por número de ingreso: ${numeroIngreso}`);
+        const { data, error } = await supabase.from("reparaciones").select("*").eq("numero_ingreso", numeroIngreso).single();
+        if (error) {
+          console.error('[ERROR] Error al buscar reparación por número de ingreso:', error);
+          throw error;
+        }
+        reparacion = data;
+      } else {
+        const errorMsg = "Se requiere 'reparacionId' o 'numeroIngreso'";
+        console.error('[ERROR]', errorMsg);
+        return new Response(JSON.stringify({ error: errorMsg }), { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    } catch (error) {
+      console.error('[ERROR] Error al buscar la reparación:', error);
+      return new Response(JSON.stringify({ 
+        error: 'Error al buscar la reparación',
+        details: error instanceof Error ? error.message : 'Error desconocido'
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     if (!reparacion) {
-      return new Response(JSON.stringify({ error: "Reparación no encontrada" }), { status: 404 });
+      const errorMsg = `Reparación no encontrada (ID: ${reparacionId}, Número: ${numeroIngreso})`;
+      console.error('[ERROR]', errorMsg);
+      return new Response(JSON.stringify({ 
+        error: errorMsg,
+        details: 'No se encontró la reparación con los parámetros proporcionados'
+      }), { 
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
+    
+    console.log('[DEBUG] Reparación encontrada:', JSON.stringify(reparacion, null, 2));
 
     // Datos asociados
-    const [{ data: equipos }, { data: cliente }, { data: presupuesto }, { data: trabajo }] = await Promise.all([
-      supabase.from("equipos").select("*").eq("reparacion_id", reparacion.id),
-      supabase.from("clientes").select("*").eq("id", reparacion.cliente_id).single(),
-      supabase
-        .from("presupuestos")
-        .select("*")
-        .eq("reparacion_id", reparacion.id)
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase.from("trabajos_reparacion").select("*").eq("reparacion_id", reparacion.id).maybeSingle(),
-    ]);
+    console.log('[DEBUG] Obteniendo datos asociados a la reparación...');
+    let equipos, cliente, presupuesto, trabajo;
+    
+    try {
+      const [equiposResult, clienteResult, presupuestoResult, trabajoResult] = await Promise.all([
+        supabase.from("equipos").select("*").eq("reparacion_id", reparacion.id),
+        supabase.from("clientes").select("*").eq("id", reparacion.cliente_id).single(),
+        supabase
+          .from("presupuestos")
+          .select("*")
+          .eq("reparacion_id", reparacion.id)
+          .order("id", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase.from("trabajos_reparacion").select("*").eq("reparacion_id", reparacion.id).maybeSingle(),
+      ]);
+      
+      equipos = equiposResult.data;
+      cliente = clienteResult.data;
+      presupuesto = presupuestoResult.data;
+      trabajo = trabajoResult.data;
+      
+      console.log('[DEBUG] Datos obtenidos:', {
+        equiposCount: equipos?.length || 0,
+        cliente: cliente ? 'Encontrado' : 'No encontrado',
+        presupuesto: presupuesto ? 'Encontrado' : 'No encontrado',
+        trabajo: trabajo ? 'Encontrado' : 'No encontrado'
+      });
+      
+      if (equiposResult.error) console.error('[ERROR] Error al obtener equipos:', equiposResult.error);
+      if (clienteResult.error) console.error('[ERROR] Error al obtener cliente:', clienteResult.error);
+      if (presupuestoResult.error) console.error('[ERROR] Error al obtener presupuesto:', presupuestoResult.error);
+      if (trabajoResult.error) console.error('[ERROR] Error al obtener trabajo:', trabajoResult.error);
+      
+    } catch (error) {
+      console.error('[ERROR] Error al obtener datos asociados:', error);
+      return new Response(JSON.stringify({ 
+        error: 'Error al obtener datos de la reparación',
+        details: error instanceof Error ? error.message : 'Error desconocido al obtener datos asociados'
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
     const numero = reparacion.numero_ingreso;
+    
+    console.log('[DEBUG] Configuración de URL base:', { baseUrl, VERCEL_URL: process.env.VERCEL_URL, NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL });
 
     const to = (cliente?.email || "").trim();
     if (!to) {
-      return new Response(JSON.stringify({ error: "Cliente sin email" }), { status: 400 });
+      const errorMsg = `Cliente sin email (ID: ${reparacion.cliente_id})`;
+      console.error('[ERROR]', errorMsg);
+      return new Response(JSON.stringify({ 
+        error: errorMsg,
+        details: 'No se puede enviar la notificación sin una dirección de correo electrónico'
+      }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
+    
+    console.log('[DEBUG] Enviando notificación a:', to, 'Tipo:', type);
 
     const recepcionista = reparacion.recepcionista || "";
 
@@ -109,51 +192,112 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === "presupuesto") {
-      const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
-      const consultaDirectaUrl = baseUrl ? `${baseUrl}/repair/${encodeURIComponent(numero)}` : "";
-      const html = `
-        ${styles}
-        <h2>Presupuesto disponible</h2>
-        <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, ya está disponible el presupuesto de tu reparación.</p>
-        <div class="card">
-          <div><strong>N° de Ingreso:</strong> ${numero}</div>
-          <div><strong>Diagnóstico de la falla:</strong> ${presupuesto?.diagnostico_falla || "-"}</div>
-          <div><strong>Proceso de reparación:</strong> ${presupuesto?.descripcion_proceso || "-"}</div>
-          <div><strong>Repuestos necesarios:</strong> ${presupuesto?.repuestos_necesarios || "-"}</div>
-          <div><strong>Importe:</strong> ${typeof presupuesto?.importe_total === "number" ? presupuesto!.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-"}</div>
-          <div><strong>Seña:</strong> ${typeof (presupuesto as any)?.seña === "number" ? (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-"}</div>
-        </div>
-        <p>Deberás abonar la <strong>seña</strong> de forma presencial o desde la web en la sección <strong>Mis Reparaciones</strong> ingresando con el número de ingreso. Una vez abonada, iniciaremos el proceso de reparación.</p>
-        <p>Ante cualquier consulta, comunícate con <strong>LESELEC</strong>.</p>
-        ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
-        ${consultaDirectaUrl ? `<p class="muted">Acceso directo: <a href="${consultaDirectaUrl}">${consultaDirectaUrl}</a></p>` : ""}
-      `;
-      await sendEmail({ to, subject: `Presupuesto disponible - Ingreso ${numero}` , html });
+      try {
+        const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
+        const consultaDirectaUrl = baseUrl ? `${baseUrl}/repair/${encodeURIComponent(numero)}` : "";
+        
+        console.log('[DEBUG] Generando HTML para notificación de presupuesto...');
+        
+        const importeTotal = typeof presupuesto?.importe_total === "number" ? 
+          presupuesto.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        const senia = typeof (presupuesto as any)?.seña === "number" ? 
+          (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        
+        const html = `
+          ${styles}
+          <h2>Presupuesto disponible</h2>
+          <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, ya está disponible el presupuesto de tu reparación.</p>
+          <div class="card">
+            <div><strong>N° de Ingreso:</strong> ${numero}</div>
+            <div><strong>Diagnóstico de la falla:</strong> ${presupuesto?.diagnostico_falla || "-"}</div>
+            <div><strong>Proceso de reparación:</strong> ${presupuesto?.descripcion_proceso || "-"}</div>
+            <div><strong>Repuestos necesarios:</strong> ${presupuesto?.repuestos_necesarios || "-"}</div>
+            <div><strong>Importe:</strong> ${importeTotal}</div>
+            <div><strong>Seña:</strong> ${senia}</div>
+          </div>
+          <p>Deberás abonar la <strong>seña</strong> de forma presencial o desde la web en la sección <strong>Mis Reparaciones</strong> ingresando con el número de ingreso. Una vez abonada, iniciaremos el proceso de reparación.</p>
+          <p>Ante cualquier consulta, comunícate con <strong>LESELEC</strong>.</p>
+          ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
+          ${consultaDirectaUrl ? `<p class="muted">Acceso directo: <a href="${consultaDirectaUrl}">${consultaDirectaUrl}</a></p>` : ""}
+        `;
+        
+        console.log('[DEBUG] Enviando correo de presupuesto...');
+        await sendEmail({ 
+          to, 
+          subject: `Presupuesto disponible - Ingreso ${numero}`, 
+          html 
+        });
+        console.log('[DEBUG] Correo de presupuesto enviado exitosamente');
+        
+      } catch (error) {
+        console.error('[ERROR] Error al enviar correo de presupuesto:', error);
+        throw new Error(`Error al enviar correo de presupuesto: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      }
     }
 
     if (type === "lista_entrega") {
-      const html = `
-        ${styles}
-        <h2>Reparación finalizada: lista para entregar</h2>
-        <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, tu reparación ya está <strong>finalizada</strong> y lista para retirar en nuestra sucursal.</p>
-        <div class="card">
-          <div><strong>N° de Ingreso:</strong> ${numero}</div>
-          <div><strong>Fecha de Ingreso:</strong> ${reparacion.fecha_creacion?.split("T")[0] || "-"}</div>
-        </div>
-        <div class="card">
-          <h3>Resumen</h3>
-          <p><strong>Recepción:</strong> Observaciones: ${reparacion.observaciones_recepcion || "-"}</p>
-          <p><strong>Presupuesto:</strong> Diagnóstico: ${presupuesto?.diagnostico_falla || "-"} • Importe: ${typeof presupuesto?.importe_total === "number" ? presupuesto!.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-"} • Seña: ${typeof (presupuesto as any)?.seña === "number" ? (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-"}</p>
-          <p><strong>Reparación:</strong> Estado: ${(trabajo as any)?.estado_reparacion || "completada"} • Encargado: ${(trabajo as any)?.encargado_reparacion || "-"}</p>
-        </div>
-        <p>Te esperamos para coordinar la entrega en nuestra sucursal.</p>
-      `;
-      await sendEmail({ to, subject: `Lista para retirar - Ingreso ${numero}` , html });
+      try {
+        console.log('[DEBUG] Generando HTML para notificación de lista de entrega...');
+        
+        const importeTotal = typeof presupuesto?.importe_total === "number" ? 
+          presupuesto.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        const senia = typeof (presupuesto as any)?.seña === "number" ? 
+          (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        
+        const html = `
+          ${styles}
+          <h2>Reparación finalizada: lista para entregar</h2>
+          <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, tu reparación ya está <strong>finalizada</strong> y lista para retirar en nuestra sucursal.</p>
+          <div class="card">
+            <div><strong>N° de Ingreso:</strong> ${numero}</div>
+            <div><strong>Fecha de Ingreso:</strong> ${reparacion.fecha_creacion?.split("T")[0] || "-"}</div>
+          </div>
+          <div class="card">
+            <h3>Resumen</h3>
+            <p><strong>Recepción:</strong> Observaciones: ${reparacion.observaciones_recepcion || "-"}</p>
+            <p><strong>Presupuesto:</strong> Diagnóstico: ${presupuesto?.diagnostico_falla || "-"} • Importe: ${importeTotal} • Seña: ${senia}</p>
+            <p><strong>Reparación:</strong> Estado: ${(trabajo as any)?.estado_reparacion || "completada"} • Encargado: ${(trabajo as any)?.encargado_reparacion || "-"}</p>
+          </div>
+          <p>Te esperamos para coordinar la entrega en nuestra sucursal.</p>
+        `;
+        
+        console.log('[DEBUG] Enviando correo de lista de entrega...');
+        await sendEmail({ 
+          to, 
+          subject: `Lista para retirar - Ingreso ${numero}`, 
+          html 
+        });
+        console.log('[DEBUG] Correo de lista de entrega enviado exitosamente');
+        
+      } catch (error) {
+        console.error('[ERROR] Error al enviar correo de lista de entrega:', error);
+        throw new Error(`Error al enviar correo de lista de entrega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      }
     }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    console.log('[DEBUG] Notificación procesada exitosamente');
+    return new Response(JSON.stringify({ 
+      ok: true,
+      message: 'Notificación enviada correctamente'
+    }), { 
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
   } catch (err: any) {
-    console.error("/api/notifications error:", err);
-    return new Response(JSON.stringify({ error: err?.message || "Error" }), { status: 500 });
+    const errorId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const errorMessage = err?.message || 'Error desconocido al procesar la notificación';
+    
+    console.error(`[ERROR ${errorId}] /api/notifications error:`, err);
+    
+    return new Response(JSON.stringify({ 
+      error: 'Error al procesar la notificación',
+      message: errorMessage,
+      errorId,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
