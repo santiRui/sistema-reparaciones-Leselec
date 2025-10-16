@@ -63,12 +63,11 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
     <div className="p-8 max-w-2xl mx-auto">
       <div className="mb-8 text-center">
         <div className="flex justify-center mb-2">
-          {/* Logo SVG elegante */}
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="24" cy="24" r="22" fill="#E3F2FD" stroke="#90CAF9" strokeWidth="2"/>
-            <path d="M16 32L24 16L32 32" stroke="#1976D2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="24" cy="28" r="2.5" fill="#1976D2"/>
-          </svg>
+          <img
+            src={process.env.NEXT_PUBLIC_LOGO_URL || "/logo-rayito.png"}
+            alt="LESELEC"
+            className="h-12 w-auto object-contain"
+          />
         </div>
         <h1 className="text-3xl font-bold mb-2 text-[#1976D2]">Detalle de Reparación</h1>
         <p className="text-[#607D8B]">N° de Ingreso: <span className="font-mono font-semibold">{repair.numero_ingreso}</span></p>
