@@ -13,6 +13,7 @@ const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefi
 const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
 const EMAIL_FROM = process.env.EMAIL_FROM;
+const EMAIL_TLS_REJECT_UNAUTHORIZED = process.env.EMAIL_TLS_REJECT_UNAUTHORIZED;
 
 // Debug: Mostrar configuraciones (sin contraseña)
 console.log('[DEBUG] Configuración SMTP:', {
@@ -45,7 +46,7 @@ function getTransporter() {
   }
   
   try {
-    const options = {
+    const options: any = {
       host: SMTP_HOST,
       port: SMTP_PORT,
       secure: SMTP_PORT === 465, // SSL en 465, STARTTLS en 587
@@ -57,6 +58,13 @@ function getTransporter() {
       debug: true,
       logger: true
     };
+    // Configuración TLS opcional para entornos con inspección SSL o certificados autofirmados
+    // Establecer EMAIL_TLS_REJECT_UNAUTHORIZED=false para permitir certificados no confiables SOLO en desarrollo
+    if (EMAIL_TLS_REJECT_UNAUTHORIZED !== undefined) {
+      const rejectUnauthorized = EMAIL_TLS_REJECT_UNAUTHORIZED !== 'false';
+      options.tls = { ...(options.tls || {}), rejectUnauthorized };
+      console.warn('[WARN] TLS rejectUnauthorized:', rejectUnauthorized, '(configurado por EMAIL_TLS_REJECT_UNAUTHORIZED)');
+    }
     
     console.log('[DEBUG] Configuración del transporter:', {
       ...options,

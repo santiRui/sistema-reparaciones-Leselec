@@ -10,6 +10,7 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
   const [repair, setRepair] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     const fetchRepair = async () => {
@@ -27,6 +28,32 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
     };
     fetchRepair();
   }, [numeroIngreso]);
+
+  const handleMockPayDeposit = async () => {
+    if (!repair || processing) return;
+    setProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('reparaciones')
+        .update({ estado_actual: 'reparacion', fecha_actualizacion: new Date().toISOString() })
+        .eq('id', repair.id);
+      if (error) {
+        alert('No se pudo registrar el pago de la seña.');
+      } else {
+        alert('Seña registrada como abonada. La reparación avanzó a Reparación.');
+        const { data, error: refetchError } = await supabase
+          .from('reparaciones')
+          .select('*, clientes(*), equipos(*), presupuestos(*), trabajos_reparacion(*)')
+          .eq('numero_ingreso', numeroIngreso)
+          .single();
+        if (!refetchError && data) {
+          setRepair(data);
+        }
+      }
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   if (loading) return <div className="p-8">Cargando...</div>;
   if (!repair) return <div className="p-8 text-red-600">No se encontró la reparación.</div>;
@@ -117,14 +144,13 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
               <div className="mt-6 flex flex-col md:flex-row gap-4">
                 <button
                   className="bg-[#43A047] text-white px-4 py-2 rounded hover:bg-[#388E3C] transition shadow-md"
-                  // onClick: aquí irá la lógica de la pasarela de pago en el futuro
-                  disabled
+                  onClick={handleMockPayDeposit}
+                  disabled={processing || repair.estado_actual !== 'presupuesto'}
                 >
                   Abonar Seña
                 </button>
                 <button
                   className="bg-[#E57373] text-white px-4 py-2 rounded hover:bg-[#C62828] transition shadow-md"
-                  // onClick: aquí irá la lógica para rechazar el presupuesto
                   disabled
                 >
                   Rechazar Presupuesto
@@ -147,8 +173,21 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
         )}
       </div>
       <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold mb-4 text-blue-800">Observaciones Generales</h2>
-        <div>{repair.observaciones_recepcion || '-'}</div>
+        <h2 className="text-lg font-semibold mb-4 text-blue-800">Datos del/los Equipo(s)</h2>
+        {Array.isArray(repair.equipos) && repair.equipos.length > 0 ? (
+          <ul className="space-y-2">
+            {repair.equipos.map((eq: any, idx: number) => (
+              <li key={eq.id || idx} className="border-b pb-2">
+                <div><b>Equipo:</b> {eq.tipo_equipo} (x{eq.cantidad || 1})</div>
+                <div><b>Marca:</b> {eq.marca}</div>
+                <div><b>N° Serie:</b> {eq.numero_serie}</div>
+                <div><b>Potencia:</b> {eq.potencia || '-'} • <b>Tensión:</b> {eq.tension || '-'} • <b>Revoluciones:</b> {eq.revoluciones || '-'}</div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-muted-foreground">No hay equipos asociados.</div>
+        )}
       </div>
     </div>
   );

@@ -140,7 +140,21 @@ export async function POST(req: NextRequest) {
     
     console.log('[DEBUG] Enviando notificación a:', to, 'Tipo:', type);
 
-    const recepcionista = reparacion.recepcionista || "";
+    let recepcionista = reparacion.recepcionista || "";
+    if (!recepcionista && reparacion.creado_por) {
+      try {
+        const { data: personalData, error: personalError } = await supabase
+          .from("personal")
+          .select("nombre_completo")
+          .eq("id", reparacion.creado_por)
+          .single();
+        if (!personalError && personalData?.nombre_completo) {
+          recepcionista = personalData.nombre_completo;
+        }
+      } catch (e) {
+        console.warn('[WARN] No se pudo obtener nombre del recepcionista desde personal:', e);
+      }
+    }
 
     const equiposHtml = Array.isArray(equipos)
       ? equipos
@@ -170,7 +184,6 @@ export async function POST(req: NextRequest) {
 
     if (type === "recepcion") {
       const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
-      const consultaDirectaUrl = baseUrl ? `${baseUrl}/repair/${encodeURIComponent(numero)}` : "";
       const html = `
         ${styles}
         <h2>Recepción registrada</h2>
@@ -186,7 +199,6 @@ export async function POST(req: NextRequest) {
         </div>
         <p>Puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso y ver el estado en tiempo real:</p>
         ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
-        ${consultaDirectaUrl ? `<p class="muted">Acceso directo: <a href="${consultaDirectaUrl}">${consultaDirectaUrl}</a></p>` : ""}
       `;
       await sendEmail({ to, subject: `Recepción N° ${numero} registrada`, html });
     }
@@ -195,6 +207,8 @@ export async function POST(req: NextRequest) {
       try {
         const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
         const consultaDirectaUrl = baseUrl ? `${baseUrl}/repair/${encodeURIComponent(numero)}` : "";
+        const trackingUrlEnv = process.env.NEXT_PUBLIC_TRACKING_URL || "";
+        const trackingUrl = trackingUrlEnv || misReparacionesUrl || consultaDirectaUrl || "";
         
         console.log('[DEBUG] Generando HTML para notificación de presupuesto...');
         
@@ -209,23 +223,30 @@ export async function POST(req: NextRequest) {
           <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, ya está disponible el presupuesto de tu reparación.</p>
           <div class="card">
             <div><strong>N° de Ingreso:</strong> ${numero}</div>
+          </div>
+          <div class="card">
+            <div><strong>Equipos:</strong></div>
+            ${equiposHtml || "<div>-</div>"}
+          </div>
+          <div class="card">
             <div><strong>Diagnóstico de la falla:</strong> ${presupuesto?.diagnostico_falla || "-"}</div>
             <div><strong>Proceso de reparación:</strong> ${presupuesto?.descripcion_proceso || "-"}</div>
             <div><strong>Repuestos necesarios:</strong> ${presupuesto?.repuestos_necesarios || "-"}</div>
             <div><strong>Importe:</strong> ${importeTotal}</div>
             <div><strong>Seña:</strong> ${senia}</div>
           </div>
-          <p>Deberás abonar la <strong>seña</strong> de forma presencial o desde la web en la sección <strong>Mis Reparaciones</strong> ingresando con el número de ingreso. Una vez abonada, iniciaremos el proceso de reparación.</p>
-          <p>Ante cualquier consulta, comunícate con <strong>LESELEC</strong>.</p>
-          ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
-          ${consultaDirectaUrl ? `<p class="muted">Acceso directo: <a href="${consultaDirectaUrl}">${consultaDirectaUrl}</a></p>` : ""}
+          <p>Puedes abonar la <strong>seña</strong> directamente desde la <strong>página de seguimiento</strong> o acercarte presencialmente a abonarla para avanzar con la reparación.</p>
+          ${trackingUrl ? `<p><a class=\"btn\" href=\"${trackingUrl}\" target=\"_blank\">Ir a la página de seguimiento</a></p>` : ""}
+          <p>Ante cualquier duda o consulta, puedes responder a este correo o comunicarte al <strong>3875018530</strong>.</p>
+          ${misReparacionesUrl ? `<p class=\"muted\">También puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso.</p>` : ""}
         `;
         
         console.log('[DEBUG] Enviando correo de presupuesto...');
         await sendEmail({ 
           to, 
           subject: `Presupuesto disponible - Ingreso ${numero}`, 
-          html 
+          html,
+          replyTo: process.env.EMAIL_USER
         });
         console.log('[DEBUG] Correo de presupuesto enviado exitosamente');
         
@@ -246,26 +267,34 @@ export async function POST(req: NextRequest) {
         
         const html = `
           ${styles}
-          <h2>Reparación finalizada: lista para entregar</h2>
-          <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, tu reparación ya está <strong>finalizada</strong> y lista para retirar en nuestra sucursal.</p>
+          <h2>Reparación finalizada: lista para retirar</h2>
+          <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, tu reparación ya está <strong>finalizada</strong> y lista para retirar.</p>
           <div class="card">
             <div><strong>N° de Ingreso:</strong> ${numero}</div>
             <div><strong>Fecha de Ingreso:</strong> ${reparacion.fecha_creacion?.split("T")[0] || "-"}</div>
           </div>
           <div class="card">
+            <h3>Equipos</h3>
+            ${equiposHtml || "<div>-</div>"}
+          </div>
+          <div class="card">
             <h3>Resumen</h3>
-            <p><strong>Recepción:</strong> Observaciones: ${reparacion.observaciones_recepcion || "-"}</p>
             <p><strong>Presupuesto:</strong> Diagnóstico: ${presupuesto?.diagnostico_falla || "-"} • Importe: ${importeTotal} • Seña: ${senia}</p>
             <p><strong>Reparación:</strong> Estado: ${(trabajo as any)?.estado_reparacion || "completada"} • Encargado: ${(trabajo as any)?.encargado_reparacion || "-"}</p>
           </div>
-          <p>Te esperamos para coordinar la entrega en nuestra sucursal.</p>
+          <p><strong>Retiro en:</strong> Zabala 117</p>
+          <p><strong>Horarios:</strong><br/>
+          Lunes a viernes de 09:00 hs a 13:00 hs<br/>
+          15:00 hs a 18:30 hs<br/>
+          o sábados de 09:30 hs a 12:30 hs.</p>
         `;
         
         console.log('[DEBUG] Enviando correo de lista de entrega...');
         await sendEmail({ 
           to, 
           subject: `Lista para retirar - Ingreso ${numero}`, 
-          html 
+          html,
+          replyTo: process.env.EMAIL_USER
         });
         console.log('[DEBUG] Correo de lista de entrega enviado exitosamente');
         
