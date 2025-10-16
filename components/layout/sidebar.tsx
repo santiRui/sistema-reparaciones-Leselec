@@ -57,11 +57,11 @@ export function Sidebar() {
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-sidebar-border flex items-center justify-center">
+          <div className="p-6 border-b border-sidebar-border">
             <img
-              src={process.env.NEXT_PUBLIC_LOGO_URL || "/logo-rayito.png"}
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-OT3bqWGGUTwASGyHFkHBFvPbvVlQID.png"
               alt="LESELEC INGENIERÍA"
-              className="h-16 w-auto object-contain"
+              className="h-16 w-auto"
             />
           </div>
 
