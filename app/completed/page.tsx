@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Eye, Printer, CheckCircle, Calendar } from "lucide-react"
+import { Search, Eye, Printer, CheckCircle, XCircle, Calendar } from "lucide-react"
 import { Sidebar } from "@/components/layout/sidebar"
 
 // Mock data for completed deliveries
@@ -107,6 +107,9 @@ export default function CompletedPage() {
           .select('*')
           .eq('reparacion_id', rep.id)
           .single();
+        const rechazoPresupuesto = Boolean(presupuesto?.rechazado) || entrega?.motivo === 'rechazo_presupuesto';
+        const estadoMotivo = rechazoPresupuesto ? 'Presupuesto rechazado' : 'Completada';
+
         return {
           id: rep.id.toString(),
           numeroIngreso: rep.numero_ingreso,
@@ -138,6 +141,9 @@ export default function CompletedPage() {
           apellidoRetirante: entrega.apellido_retirante || '',
           dniRetirante: entrega.dni_retirante || '',
           estadoEntrega: entrega.estado_entrega || '',
+          motivoEntrega: entrega?.motivo || null,
+          rechazoPresupuesto,
+          estadoMotivo,
           diagnostico: presupuesto?.diagnostico_falla || '',
           descripcionProceso: presupuesto?.descripcion_proceso || '',
           repuestos: presupuesto?.repuestos_necesarios || '',
@@ -445,9 +451,15 @@ export default function CompletedPage() {
                                                 <TableCell className="px-6 py-4">{repair.fechaIngreso ? new Date(repair.fechaIngreso + 'T00:00:00').toLocaleDateString('es-AR') : ''}</TableCell>
                         <TableCell className="px-6 py-4">{repair.fechaEntrega ? new Date(repair.fechaEntrega + 'T00:00:00').toLocaleDateString('es-AR') : ''}</TableCell>
                         <TableCell className="px-6 py-4">
-                          <Badge className="bg-green-100 text-green-800 hover:bg-green-100 font-medium">
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                          </Badge>
+                          {repair.rechazoPresupuesto ? (
+                            <Badge className="bg-red-100 text-red-800 hover:bg-red-100 font-medium">
+                              <XCircle className="w-3 h-3 mr-1" /> {repair.estadoMotivo}
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100 font-medium">
+                              <CheckCircle className="w-3 h-3 mr-1" /> Completada
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="px-6 py-4">
                           <div className="flex space-x-2">
