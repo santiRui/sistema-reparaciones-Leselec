@@ -438,11 +438,12 @@ export default function CompletedPage() {
                         <TableCell className="px-6 py-4">
                           <div>
                             {Array.isArray(repair.equipos) && repair.equipos.length > 0
-                              ? repair.equipos.map((eq, idx) => (
-                                  <div key={eq.id || idx} style={{ fontWeight: 500, marginBottom: 2 }}>
-                                    {eq.tipo_equipo} <span style={{ color: '#666', fontWeight: 400 }}>(x{eq.cantidad})</span>
-                                  </div>
-                                ))
+                              ? (repair.equipos as Array<{ id?: string; tipo_equipo: string; cantidad: number }>).
+                                  map((eq: { id?: string; tipo_equipo: string; cantidad: number }, idx: number) => (
+                                    <div key={eq.id || idx} style={{ fontWeight: 500, marginBottom: 2 }}>
+                                      {eq.tipo_equipo} <span style={{ color: '#666', fontWeight: 400 }}>(x{eq.cantidad})</span>
+                                    </div>
+                                  ))
                               : <span className="text-muted-foreground">Sin equipos</span>}
                           </div>
                         </TableCell>
