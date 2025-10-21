@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     `;
 
     if (type === "recepcion") {
-      const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
+      const misReparacionesUrl = "https://sistema-reparaciones-leselec-gules.vercel.app/client-login";
       const html = `
         ${styles}
         <h2>Recepción registrada</h2>
@@ -205,10 +205,8 @@ export async function POST(req: NextRequest) {
 
     if (type === "presupuesto") {
       try {
-        const misReparacionesUrl = baseUrl ? `${baseUrl}/client-login` : "";
-        const consultaDirectaUrl = baseUrl ? `${baseUrl}/repair/${encodeURIComponent(numero)}` : "";
-        const trackingUrlEnv = process.env.NEXT_PUBLIC_TRACKING_URL || "";
-        const trackingUrl = trackingUrlEnv || misReparacionesUrl || consultaDirectaUrl || "";
+        const misReparacionesUrl = "https://sistema-reparaciones-leselec-gules.vercel.app/client-login";
+        const trackingUrl = misReparacionesUrl;
         
         console.log('[DEBUG] Generando HTML para notificación de presupuesto...');
         
@@ -216,6 +214,8 @@ export async function POST(req: NextRequest) {
           presupuesto.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
         const senia = typeof (presupuesto as any)?.seña === "number" ? 
           (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        const diagnosticoMonto = typeof (presupuesto as any)?.diagnostico === "number" ?
+          (presupuesto as any).diagnostico.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
         
         const html = `
           ${styles}
@@ -234,8 +234,9 @@ export async function POST(req: NextRequest) {
             <div><strong>Repuestos necesarios:</strong> ${presupuesto?.repuestos_necesarios || "-"}</div>
             <div><strong>Importe:</strong> ${importeTotal}</div>
             <div><strong>Seña:</strong> ${senia}</div>
+            <div><strong>Diagnóstico:</strong> ${diagnosticoMonto}</div>
           </div>
-          <p>Puedes abonar la <strong>seña</strong> directamente desde la <strong>página de seguimiento</strong> o acercarte presencialmente a abonarla para avanzar con la reparación.</p>
+          <p>Puedes abonar la <strong>seña</strong> y el <strong>diagnóstico</strong> directamente desde la <strong>página de seguimiento</strong> o acercarte presencialmente a abonarlos para avanzar con la reparación.</p>
           ${trackingUrl ? `<p><a class=\"btn\" href=\"${trackingUrl}\" target=\"_blank\">Ir a la página de seguimiento</a></p>` : ""}
           <p>Ante cualquier duda o consulta, puedes responder a este correo o comunicarte al <strong>3875018530</strong>.</p>
           ${misReparacionesUrl ? `<p class=\"muted\">También puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso.</p>` : ""}

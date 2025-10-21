@@ -84,6 +84,7 @@ interface Repair {
   diagnosticoFalla?: string
   descripcionProceso?: string
   repuestos?: string
+  diagnostico?: string
   importe?: string
   fechaPresupuesto?: string
   presupuestadoPor?: string
@@ -113,6 +114,7 @@ export default function BudgetPage() {
     diagnosticoFalla: "",
     descripcionProceso: "",
     repuestos: "",
+    diagnostico: "",
     importe: "",
     seña: "",
     emiteFactura: false,
@@ -206,6 +208,9 @@ export default function BudgetPage() {
           diagnosticoFalla: presupuesto?.diagnostico_falla || '',
           descripcionProceso: presupuesto?.descripcion_proceso || '',
           repuestos: presupuesto?.repuestos_necesarios || '',
+          diagnostico: typeof presupuesto?.diagnostico === 'number'
+            ? presupuesto.diagnostico.toString()
+            : (presupuesto?.diagnostico ?? ''),
           importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
           seña: presupuesto?.["seña"] ? presupuesto["seña"].toString() : '',
           emiteFactura: presupuesto?.emision_factura || false,
@@ -312,7 +317,8 @@ export default function BudgetPage() {
       }
 
       // Validar formato numérico
-      const importe = parseFloat(budgetFormData.importe.replace(',', '.')) || 0;
+      const importe = parseFloat(String(budgetFormData.importe).replace(',', '.')) || 0;
+      const diagnostico = parseFloat(String(budgetFormData.diagnostico ?? '0').replace(',', '.')) || 0;
       const seña = parseFloat(budgetFormData.seña.replace(',', '.')) || 0;
 
       if (isNaN(importe) || importe <= 0) {
@@ -350,6 +356,7 @@ export default function BudgetPage() {
         diagnostico_falla: budgetFormData.diagnosticoFalla,
         descripcion_proceso: budgetFormData.descripcionProceso,
         repuestos_necesarios: budgetFormData.repuestos,
+        diagnostico: diagnostico,
         importe_total: importe,
         ["seña"]: seña,
         emision_factura: budgetFormData.emiteFactura || false,
@@ -402,6 +409,7 @@ export default function BudgetPage() {
             diagnosticoFalla: budgetFormData.diagnosticoFalla,
             descripcionProceso: budgetFormData.descripcionProceso,
             repuestos: budgetFormData.repuestos,
+            diagnostico: isNaN(diagnostico) ? '' : diagnostico.toString(),
             importe: importe.toString(),
             seña: seña.toString(),
             estado: 'presupuesto' as const, // Ensure type safety for estado
@@ -424,6 +432,7 @@ export default function BudgetPage() {
         diagnosticoFalla: budgetFormData.diagnosticoFalla,
         descripcionProceso: budgetFormData.descripcionProceso,
         repuestos: budgetFormData.repuestos,
+        diagnostico: isNaN(diagnostico) ? '' : diagnostico.toString(),
         importe: importe.toString(),
         seña: seña.toString(),
         estado: 'presupuesto',
@@ -443,6 +452,7 @@ export default function BudgetPage() {
         diagnosticoFalla: "",
         descripcionProceso: "",
         repuestos: "",
+        diagnostico: "",
         importe: "",
         seña: "",
         emiteFactura: false,
@@ -594,6 +604,7 @@ export default function BudgetPage() {
       diagnosticoFalla: repair.diagnosticoFalla || "",
       descripcionProceso: repair.descripcionProceso || "",
       repuestos: repair.repuestos || "",
+      diagnostico: repair.diagnostico != null ? String(repair.diagnostico) : "",
       importe: repair.importe || "",
       seña: repair.seña || "",
       emiteFactura: typeof repair.emiteFactura === 'boolean' ? repair.emiteFactura : false,
@@ -708,6 +719,9 @@ export default function BudgetPage() {
             </b></div>
             <div class="field"><strong>Seña:</strong> <b style='color:blue;'>$
               ${repair.seña ? Number(repair.seña).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+            </b></div>
+            <div class="field"><strong>Diagnóstico:</strong> <b style='color:blue;'>$
+              ${repair.diagnostico ? Number(repair.diagnostico).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
             </b></div>
           </div>
         </body>
@@ -833,6 +847,7 @@ export default function BudgetPage() {
                       <TableHead>Estado Presupuesto</TableHead>
                       <TableHead>Importe</TableHead>
                       <TableHead>Seña</TableHead>
+                      <TableHead>Diagnóstico</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -884,6 +899,16 @@ export default function BudgetPage() {
                               <div className="flex items-center gap-1">
                                 <DollarSign className="h-4 w-4 text-blue-600" />
                                 <span className="font-medium">{Number(repair.seña).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {repair.diagnostico ? (
+                              <div className="flex items-center gap-1">
+                                <DollarSign className="h-4 w-4 text-blue-600" />
+                                <span className="font-medium">{Number(repair.diagnostico).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">-</span>
@@ -1106,7 +1131,7 @@ export default function BudgetPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="importe">Importe Total *</Label>
                       <div className="relative">
@@ -1120,6 +1145,21 @@ export default function BudgetPage() {
                           placeholder="0.00"
                           className="pl-10"
                           required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="diagnostico">Diagnóstico</Label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                        <Input
+                          id="diagnostico"
+                          type="number"
+                          step="0.01"
+                          value={budgetFormData.diagnostico}
+                          onChange={(e) => setBudgetFormData({ ...budgetFormData, diagnostico: e.target.value })}
+                          placeholder="0.00"
+                          className="pl-10"
                         />
                       </div>
                     </div>
@@ -1152,6 +1192,7 @@ export default function BudgetPage() {
                       diagnosticoFalla: "",
                       descripcionProceso: "",
                       repuestos: "",
+                      diagnostico: "",
                       importe: "",
                       seña: "",
                       emiteFactura: false,

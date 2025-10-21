@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Search, Edit, Eye, Package, DollarSign, ArrowRight, FileText, User, Printer } from "lucide-react"
+import { Search, Edit, Eye, Package, DollarSign, ArrowRight, FileText, User, Printer, CheckCircle2 } from "lucide-react"
 
 interface Client {
   id: string
@@ -111,6 +112,9 @@ export default function DeliveryPage() {
     apellidoRetirante: "",
     estadoEntrega: "pendiente" as "pendiente" | "entregado",
   })
+  const { toast } = useToast()
+  // Flags de pago editables por cajero en el formulario
+  const [paymentFlags, setPaymentFlags] = useState({ diagnosticoAbonado: false, seniaAbonada: false })
 
   // Cargar reparaciones en etapa 'entrega' desde Supabase y combinar con datos de entregas
   const loadDeliveryRepairs = async () => {
@@ -193,7 +197,11 @@ export default function DeliveryPage() {
           diagnosticoFalla: presupuesto?.diagnostico_falla || '',
           descripcionProceso: presupuesto?.descripcion_proceso || '',
           repuestos: presupuesto?.repuestos_necesarios || '',
+          diagnostico: typeof presupuesto?.diagnostico === 'number' ? presupuesto.diagnostico.toString() : '',
           importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+          rechazoPresupuesto: presupuesto?.rechazado === true,
+          diagnosticoAbonado: presupuesto?.diagnostico_abonado === true,
+          seniaAbonada: (presupuesto as any)?.senia_abonada === true || (presupuesto as any)?.["seña_abonada"] === true,
           encargadoReparacion: trabajo?.encargado_reparacion || '',
           armador: trabajo?.armador || '',
           observacionesReparacion: trabajo?.observaciones_reparacion || '',
@@ -208,8 +216,36 @@ export default function DeliveryPage() {
           fechaEntrega: rep.fecha_entrega || '',
         };
       }));
-      setDeliveryRepairs(repairsWithDetails);
+      // Mostrar solo entregas en proceso (no las ya entregadas)
+      setDeliveryRepairs((repairsWithDetails as any[]).filter((r) => r.estadoEntrega !== 'entregado'));
     }
+
+  // Marcar seña como pagada manualmente (cajero)
+  const handleMarkSeniaPaid = async (repair: Repair) => {
+    // Buscar último presupuesto y marcar seña_abonada = true
+    const { data: lastPres, error } = await supabase
+      .from('presupuestos')
+      .select('id')
+      .eq('reparacion_id', Number(repair.id))
+      .order('id', { ascending: false })
+      .limit(1)
+      .single();
+    if (error || !lastPres?.id) {
+      toast({ variant: 'destructive', title: 'No se pudo marcar la seña', description: 'No se encontró presupuesto para esta reparación.' })
+      return;
+    }
+    const { error: updErr } = await supabase
+      .from('presupuestos')
+      .update({ senia_abonada: true })
+      .eq('id', lastPres.id);
+    if (updErr) {
+      toast({ variant: 'destructive', title: 'No se pudo marcar la seña', description: updErr.message })
+      return;
+    }
+    // Refrescar lista y estado local
+    setDeliveryRepairs(prev => prev.map((r) => r.id === repair.id ? ({ ...r, seniaAbonada: true } as any) : r))
+    toast({ title: 'Seña marcada como pagada', description: `Reparación ${repair.numeroIngreso}` })
+  }
   };
 
   useEffect(() => {
@@ -285,6 +321,7 @@ export default function DeliveryPage() {
                 email: cliente.email,
                 direccion: cliente.direccion,
               } : undefined,
+              equipos: equipo ? [{ id: String(equipo.id || rep.id), tipo_equipo: equipo.tipo_equipo, marca: equipo.marca, numero_serie: equipo.numero_serie, cantidad: Number(equipo.cantidad || 1), potencia: equipo.potencia, tension: equipo.tension, revoluciones: equipo.revoluciones }] : [],
               equipo: equipo?.tipo_equipo || '',
               marcaEquipo: equipo?.marca || '',
               numeroSerie: equipo?.numero_serie || '',
@@ -302,6 +339,9 @@ export default function DeliveryPage() {
               descripcionProceso: presupuesto?.descripcion_proceso || '',
               repuestos: presupuesto?.repuestos_necesarios || '',
               importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+              rechazoPresupuesto: presupuesto?.rechazado === true,
+              diagnosticoAbonado: presupuesto?.diagnostico_abonado === true,
+              seniaAbonada: (presupuesto as any)?.senia_abonada === true || (presupuesto as any)?.["seña_abonada"] === true,
               encargadoReparacion: trabajo?.encargado_reparacion || '',
               armador: trabajo?.armador || '',
               observacionesReparacion: trabajo?.observaciones_reparacion || '',
@@ -322,6 +362,34 @@ export default function DeliveryPage() {
 
     if (!editingRepair) return
 
+    const isComplete = (
+      (deliveryFormData.cajero?.trim() || "") !== "" &&
+      (deliveryFormData.fechaRetiro?.trim() || "") !== "" &&
+      (deliveryFormData.nombreRetirante?.trim() || "") !== "" &&
+      (deliveryFormData.apellidoRetirante?.trim() || "") !== "" &&
+      (deliveryFormData.dniRetirante?.trim() || "") !== "" &&
+      deliveryFormData.estadoEntrega === 'entregado'
+    )
+
+    // Persistir flags de pago en el último presupuesto (si existen cambios)
+    try {
+      const { data: lastPres } = await supabase
+        .from('presupuestos')
+        .select('id')
+        .eq('reparacion_id', Number(editingRepair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+      if (lastPres?.id) {
+        await supabase
+          .from('presupuestos')
+          .update({ diagnostico_abonado: paymentFlags.diagnosticoAbonado })
+          .eq('id', lastPres.id);
+        // actualizar estado local de la lista
+        setDeliveryRepairs(prev => prev.map((r) => r.id === editingRepair.id ? ({ ...r, diagnosticoAbonado: paymentFlags.diagnosticoAbonado } as any) : r))
+      }
+    } catch {}
+
     // Guardar en tabla entregas
     const { error: entregaError } = await supabase
       .from('entregas')
@@ -337,39 +405,57 @@ export default function DeliveryPage() {
         }
       ], { onConflict: 'reparacion_id' })
     if (entregaError) {
-      alert('Error guardando entrega: ' + entregaError.message)
+      toast({ variant: 'destructive', title: 'Error guardando entrega', description: entregaError.message })
       return
     }
 
-    // Actualizar estado en reparaciones
+    if (isComplete) {
+      // Validar si proviene de rechazo: diagnóstico debe estar abonado
+      if ((editingRepair as any).rechazoPresupuesto && !paymentFlags.diagnosticoAbonado) {
+        toast({ variant: 'destructive', title: 'No se puede finalizar', description: 'Debe estar abonado el diagnóstico para finalizar esta entrega.' })
+        return
+      }
+      // Validar si proviene de rechazo: seña debe estar abonada
+      if ((editingRepair as any).rechazoPresupuesto && !(editingRepair as any).seniaAbonada) {
+        toast({ variant: 'destructive', title: 'No se puede finalizar', description: 'Debe estar abonada la seña para finalizar esta entrega.' })
+        return
+      }
+
+      // Marcar entrega como entregada y reparación como finalizada
+      await supabase
+        .from('entregas')
+        .update({ estado_entrega: 'entregado' })
+        .eq('reparacion_id', Number(editingRepair.id))
+
+      await supabase
+        .from('reparaciones')
+        .update({ estado_actual: 'finalizada', fecha_entrega: new Date().toISOString(), fecha_actualizacion: new Date().toISOString() })
+        .eq('id', Number(editingRepair.id))
+    } else {
+      // Mantener en entrega si aún no está completo
+      await supabase
+        .from('reparaciones')
+        .update({ estado_actual: 'entrega', fecha_actualizacion: new Date().toISOString() })
+        .eq('id', Number(editingRepair.id))
+    }
+
+    // Opcional: actualizar fecha_entrega en reparaciones
     await supabase
       .from('reparaciones')
-      .update({
-        estado_actual: 'entrega',
-        fecha_actualizacion: new Date().toISOString()
-      })
-      .eq('id', editingRepair.id)
-
-    // Opcional: actualizar estado local si quieres feedback inmediato
-    const updatedRepair: Repair = {
-      ...editingRepair,
-      ...deliveryFormData,
-      fechaEntrega:
-        deliveryFormData.estadoEntrega === "entregado"
-          ? new Date().toISOString().split("T")[0]
-          : editingRepair.fechaEntrega,
-    }
-    const updatedRepairs = repairs.map((repair) => (repair.id === editingRepair.id ? updatedRepair : repair))
-    setRepairs(updatedRepairs)
-
+      .update({ fecha_entrega: new Date().toISOString() })
+      .eq('id', Number(editingRepair.id));
     // Recargar lista y datos del formulario
     await loadDeliveryRepairs();
+    if (isComplete) {
+      // Remover optimistamente de la lista local de entregas en proceso
+      setDeliveryRepairs(prev => prev.filter((r) => r.id !== editingRepair.id))
+    }
     if (editingRepair) {
       // Buscar en entregas datos actualizados
       const { data: entrega } = await supabase
         .from('entregas')
         .select('*')
-        .eq('reparacion_id', editingRepair.id)
+        .eq('reparacion_id', Number(editingRepair.id))
         .single();
       setDeliveryFormData({
         cajero: currentUser?.username || "",
@@ -382,6 +468,7 @@ export default function DeliveryPage() {
     }
     setEditingRepair(null)
     setIsDeliveryDialogOpen(false)
+    toast({ title: isComplete ? 'Entrega finalizada' : 'Entrega actualizada', description: isComplete ? 'La reparación pasó a Entregas finalizadas.' : 'Datos de entrega guardados.' })
   }
 
   const handleMoveToBilling = (repair: Repair) => {
@@ -406,6 +493,10 @@ export default function DeliveryPage() {
       nombreRetirante: entrega?.nombre_retirante || "",
       apellidoRetirante: entrega?.apellido_retirante || "",
       estadoEntrega: entrega?.estado_entrega || "pendiente",
+    })
+    setPaymentFlags({
+      diagnosticoAbonado: (repair as any).diagnosticoAbonado === true,
+      seniaAbonada: (repair as any).seniaAbonada === true,
     })
     setIsDeliveryDialogOpen(true)
   }
@@ -610,6 +701,15 @@ export default function DeliveryPage() {
 
   // Finalizar entrega
   const handleFinalizeDelivery = async (repair: Repair) => {
+    // Validar que diagnóstico esté abonado si la entrega proviene de rechazo
+    if ((repair as any).rechazoPresupuesto && !(repair as any).diagnosticoAbonado) {
+      toast({
+        variant: 'destructive',
+        title: 'No se puede entregar',
+        description: 'Debe estar abonado el diagnóstico para entregar una reparación con presupuesto rechazado.',
+      })
+      return;
+    }
     // Actualizar estado_entrega a 'entregado' en la tabla entregas
     await supabase
       .from('entregas')
@@ -622,6 +722,7 @@ export default function DeliveryPage() {
       .eq('id', repair.id);
     // Recargar lista para que desaparezca del módulo actual
     await loadDeliveryRepairs();
+    toast({ title: 'Entrega finalizada', description: 'El equipo fue marcado como entregado.' })
   };
 
   // Reparaciones completadas para mover a entrega
@@ -773,6 +874,7 @@ export default function DeliveryPage() {
                       <TableHead>Retirante</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Presupuesto</TableHead>
+                      <TableHead>Diagnóstico</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -800,7 +902,7 @@ export default function DeliveryPage() {
                                       {eq.tipo_equipo} <span style={{ color: '#666', fontWeight: 400 }}>(x{eq.cantidad})</span>
                                     </div>
                                   ))
-                                : <span className="text-muted-foreground">Sin equipos</span>}
+                                : repair.equipo}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -816,9 +918,11 @@ export default function DeliveryPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={repair.estadoEntrega === "entregado" ? "outline" : "secondary"}>
-                              {repair.estadoEntrega === "entregado" ? "Entregado" : "Pendiente"}
-                            </Badge>
+                            {(repair as any).rechazoPresupuesto ? (
+                              <Badge variant="destructive">Presupuesto rechazado</Badge>
+                            ) : (
+                              <Badge variant="secondary">Curso normal</Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             {repair.importe && (
@@ -826,6 +930,13 @@ export default function DeliveryPage() {
                                 <DollarSign className="h-4 w-4 text-green-600" />
                                 <span className="font-medium">${repair.importe}</span>
                               </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {(repair as any).diagnosticoAbonado ? (
+                              <Badge variant="outline" className="text-green-700 border-green-600">Abonado</Badge>
+                            ) : (
+                              <Badge variant="secondary">Pendiente</Badge>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
@@ -995,25 +1106,39 @@ export default function DeliveryPage() {
                       />
                     </div>
 
-                                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Diagnóstico abonado</Label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            id="diagnosticoAbonado"
+                            type="checkbox"
+                            checked={paymentFlags.diagnosticoAbonado}
+                            onChange={(e) => setPaymentFlags((p) => ({ ...p, diagnosticoAbonado: e.target.checked }))}
+                          />
+                          <span className="text-sm text-muted-foreground">Marca si el cliente abonó el diagnóstico presencialmente</span>
+                        </div>
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="estadoEntrega">Estado de Entrega *</Label>
-                    <select
-                      id="estadoEntrega"
-                      value={deliveryFormData.estadoEntrega}
-                      onChange={(e) =>
-                        setDeliveryFormData({
-                          ...deliveryFormData,
-                          estadoEntrega: e.target.value as "pendiente" | "entregado",
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
-                      required
-                    >
-                      <option value="pendiente">Pendiente de Entrega</option>
-                      <option value="entregado">Entregado</option>
-                    </select>
+                    <div className="space-y-2">
+                      <Label htmlFor="estadoEntrega">Estado de Entrega *</Label>
+                      <select
+                        id="estadoEntrega"
+                        value={deliveryFormData.estadoEntrega}
+                        onChange={(e) =>
+                          setDeliveryFormData({
+                            ...deliveryFormData,
+                            estadoEntrega: e.target.value as "pendiente" | "entregado",
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+                        required
+                      >
+                        <option value="pendiente">Pendiente de Entrega</option>
+                        <option value="entregado">Entregado</option>
+                      </select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1037,7 +1162,17 @@ export default function DeliveryPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit">Actualizar Entrega</Button>
+                {/* Botón dinámico: si formulario completo, finalizar; si no, actualizar */}
+                <Button type="submit">
+                  {(
+                    (deliveryFormData.cajero?.trim() || "") !== "" &&
+                    (deliveryFormData.fechaRetiro?.trim() || "") !== "" &&
+                    (deliveryFormData.nombreRetirante?.trim() || "") !== "" &&
+                    (deliveryFormData.apellidoRetirante?.trim() || "") !== "" &&
+                    (deliveryFormData.dniRetirante?.trim() || "") !== "" &&
+                    deliveryFormData.estadoEntrega === 'entregado'
+                  ) ? 'Finalizar Entrega' : 'Actualizar Entrega'}
+                </Button>
               </div>
             </form>
           )}
