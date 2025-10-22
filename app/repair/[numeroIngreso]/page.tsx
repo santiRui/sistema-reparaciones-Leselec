@@ -35,8 +35,9 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
         setRepair(null);
       } else {
         setRepair(data);
-        // Detectar rechazo persistido
-        const presupuestos = Array.isArray(data.presupuestos) ? data.presupuestos : (data.presupuestos ? [data.presupuestos] : []);
+        const presupuestos = Array.isArray(data.presupuestos)
+          ? [...data.presupuestos].sort((a: any, b: any) => (b?.id || 0) - (a?.id || 0))
+          : (data.presupuestos ? [data.presupuestos] : []);
         const last = presupuestos && presupuestos.length > 0 ? presupuestos[0] : null;
         const entrega = Array.isArray(data.entregas) ? data.entregas[0] : data.entregas;
         if ((last && last.rechazado === true) || (entrega && entrega.motivo === 'rechazo_presupuesto')) {
@@ -74,10 +75,15 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
           .limit(1)
           .single();
         if (lastPresPay?.id) {
-          await supabase
+          const { error: updErr } = await supabase
             .from('presupuestos')
             .update({ diagnostico_abonado: true } as any)
             .eq('id', lastPresPay.id);
+          if (updErr) {
+            console.error('Supabase update presupuestos (rechazado->diagnostico_abonado) error:', updErr);
+            toast({ variant: 'destructive', title: 'No se pudo marcar diagnóstico abonado', description: String(updErr?.message || updErr) });
+            return;
+          }
         }
 
         const { error } = await supabase
@@ -101,6 +107,45 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
       }
 
       // Flujo normal: abono de seña+diagnóstico y paso a reparación
+      const { data: lastPresNorm }: any = await supabase
+        .from('presupuestos')
+        .select('id, se\u00f1a')
+        .eq('reparacion_id', repair.id)
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+      if (lastPresNorm?.id) {
+        const setSeña = Number((lastPresNorm as any)['seña'] || 0) > 0;
+        const { error: updDiagErr } = await supabase
+          .from('presupuestos')
+          .update({ diagnostico_abonado: true } as any)
+          .eq('id', lastPresNorm.id);
+        if (updDiagErr) {
+          console.error('Supabase update presupuestos (diagnostico_abonado) error:', updDiagErr);
+          toast({ variant: 'destructive', title: 'No se pudo registrar el abono en presupuesto', description: String(updDiagErr?.message || updDiagErr) });
+          return;
+        }
+        if (setSeña) {
+          // Intento 1: columna con tilde
+          const tryTilde = await supabase
+            .from('presupuestos')
+            .update({ ['seña_abonada']: true } as any)
+            .eq('id', lastPresNorm.id);
+          if (tryTilde.error) {
+            console.warn('Columna seña_abonada no encontrada, probando senia_abonada:', tryTilde.error);
+            // Intento 2: columna sin tilde
+            const tryNoTilde = await supabase
+              .from('presupuestos')
+              .update({ senia_abonada: true } as any)
+              .eq('id', lastPresNorm.id);
+            if (tryNoTilde.error) {
+              console.warn('No se pudo marcar seña abonada en ninguna variante:', tryNoTilde.error);
+              // No detenemos el flujo; diagnóstico quedó abonado y se avanza de etapa igual
+            }
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('reparaciones')
         .update({ estado_actual: 'reparacion', fecha_actualizacion: new Date().toISOString() })
@@ -195,9 +240,9 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
       <div className="mt-8 bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold mb-4 text-blue-800">Presupuesto y Reparación</h2>
         {(() => {
-          // Soporte para presupuestos como array o como objeto
+          // Tomar siempre el presupuesto más reciente por id
           const presupuesto = Array.isArray(repair.presupuestos)
-            ? repair.presupuestos[0]
+            ? [...repair.presupuestos].sort((a: any, b: any) => (b?.id || 0) - (a?.id || 0))[0]
             : repair.presupuestos;
           return presupuesto ? <>
             {presupuesto.diagnostico_falla && (
@@ -212,54 +257,111 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
             {presupuesto.importe_total && (
               <div><b>Importe Total:</b> $ {Number(presupuesto.importe_total).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}</div>
             )}
-            {presupuesto.seña && (
-              <div><b>Seña:</b> $ {Number(presupuesto.seña).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}</div>
+            {(presupuesto as any)['seña'] && (
+              <div>
+                <b>Seña:</b> $ {Number((presupuesto as any)['seña']).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}
+                {(() => {
+                  const rawSenia: any = (presupuesto as any)?.senia_abonada ?? (presupuesto as any)?.['seña_abonada'];
+                  const seniaAb = rawSenia === true || rawSenia === 'true' || rawSenia === 't' || rawSenia === 1 || rawSenia === '1' || repair.estado_actual !== 'presupuesto';
+                  return (
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] border font-medium"
+                      style={{
+                        color: seniaAb ? '#166534' : '#374151',
+                        borderColor: seniaAb ? '#16a34a' : '#d1d5db',
+                        background: seniaAb ? '#dcfce7' : '#f9fafb'
+                      }}>
+                      {seniaAb ? 'Abonado' : 'Pendiente'}
+                    </span>
+                  );
+                })()}
+              </div>
             )}
             {typeof presupuesto.diagnostico === 'number' && (
               <div>
                 <b>Diagnóstico:</b> $ {Number(presupuesto.diagnostico).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}
-                {typeof (presupuesto as any)?.diagnostico_abonado === 'boolean' && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs border"
+                {(() => {
+                  const rawDiag: any = (presupuesto as any)?.diagnostico_abonado;
+                  const diagAb = rawDiag === true || rawDiag === 'true' || rawDiag === 't' || rawDiag === 1 || rawDiag === '1' || repair.estado_actual !== 'presupuesto';
+                  const fueRechazado = Boolean((presupuesto as any)?.rechazado);
+                  return (
+                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] border font-medium"
                     style={{
-                      color: (presupuesto as any).diagnostico_abonado ? '#166534' : '#374151',
-                      borderColor: (presupuesto as any).diagnostico_abonado ? '#16a34a' : '#d1d5db',
-                      background: (presupuesto as any).diagnostico_abonado ? '#dcfce7' : '#f9fafb'
+                      color: fueRechazado ? '#9a3412' : (diagAb ? '#166534' : '#374151'),
+                      borderColor: fueRechazado ? '#f97316' : (diagAb ? '#16a34a' : '#d1d5db'),
+                      background: fueRechazado ? '#ffedd5' : (diagAb ? '#dcfce7' : '#f9fafb')
                     }}>
-                    {(presupuesto as any).diagnostico_abonado ? 'Abonado' : 'Pendiente'}
+                    {fueRechazado ? 'Rechazado' : (diagAb ? 'Abonado' : 'Pendiente')}
                   </span>
-                )}
+                  );
+                })()}
               </div>
             )}
-            {(Number(presupuesto.seña || 0) > 0 || Number(presupuesto.diagnostico || 0) > 0) && (
-              <div className="mt-6 flex flex-col md:flex-row gap-4">
-                {!rejected ? (
-                  <>
+            {(Number((presupuesto as any)['seña'] || 0) > 0 || Number(presupuesto.diagnostico || 0) > 0) && (() => {
+              const rawDiag: any = (presupuesto as any)?.diagnostico_abonado;
+              const diagAb = rawDiag === true || rawDiag === 'true' || rawDiag === 't' || rawDiag === 1 || rawDiag === '1';
+              const rawSenia: any = (presupuesto as any)?.senia_abonada ?? (presupuesto as any)?.['seña_abonada'];
+              const seniaAb = rawSenia === true || rawSenia === 'true' || rawSenia === 't' || rawSenia === 1 || rawSenia === '1';
+              const haySeña = Number((presupuesto as any)['seña'] || 0) > 0;
+              const fueRechazado = rejected || Boolean((presupuesto as any)?.rechazado);
+
+              // Cuando ya está abonado, mostrar leyenda y ocultar botones
+              if (diagAb && (!haySeña || (haySeña && seniaAb))) {
+                return (
+                  <div className="mt-4 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                       style={{ color: fueRechazado ? '#9a3412' : '#166534', borderColor: fueRechazado ? '#fdba74' : '#86efac', background: fueRechazado ? '#fff7ed' : '#ecfdf5' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.06l2.5 2.5a.75.75 0 001.146-.088l4.09-5.5z" clipRule="evenodd" />
+                    </svg>
+                    <span>{fueRechazado ? 'Presupuesto rechazado — Diagnóstico abonado' : (haySeña ? 'Seña y diagnóstico abonados' : 'Diagnóstico abonado')}</span>
+                  </div>
+                );
+              }
+
+              // Si ya no está en etapa de presupuesto pero el diagnóstico está abonado, ocultar botones y mostrar leyenda
+              if (repair.estado_actual !== 'presupuesto') {
+                return (
+                  <div className="mt-4 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                       style={{ color: fueRechazado ? '#9a3412' : '#166534', borderColor: fueRechazado ? '#fdba74' : '#86efac', background: fueRechazado ? '#fff7ed' : '#ecfdf5' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.06l2.5 2.5a.75.75 0 001.146-.088l4.09-5.5z" clipRule="evenodd" />
+                    </svg>
+                    <span>{fueRechazado ? 'Presupuesto rechazado — Diagnóstico abonado' : (haySeña && seniaAb ? 'Seña y diagnóstico abonados' : 'Diagnóstico abonado')}</span>
+                  </div>
+                );
+              }
+
+              // Si no está abonado todavía, mostrar botones según flujo
+              return (
+                <div className="mt-6 flex flex-col md:flex-row gap-4">
+                  {!fueRechazado ? (
+                    <>
+                      <button
+                        className="bg-[#43A047] text-white px-4 py-2 rounded hover:bg-[#388E3C] transition shadow-md"
+                        onClick={handleMockPayDeposit}
+                        disabled={processing || repair.estado_actual !== 'presupuesto'}
+                      >
+                        {haySeña ? 'Abonar Seña + Diagnóstico' : 'Abonar Diagnóstico y continuar'}
+                      </button>
+                      <button
+                        className="bg-[#E57373] text-white px-4 py-2 rounded hover:bg-[#C62828] transition shadow-md"
+                        onClick={() => setOpenRejectDialog(true)}
+                        disabled={processing}
+                      >
+                        Rechazar Presupuesto
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      className="bg-[#43A047] text-white px-4 py-2 rounded hover:bg-[#388E3C] transition shadow-md"
+                      className="bg-[#F59E0B] text-white px-4 py-2 rounded hover:bg-[#D97706] transition shadow-md"
                       onClick={handleMockPayDeposit}
-                      disabled={processing || repair.estado_actual !== 'presupuesto'}
-                    >
-                      {Number(presupuesto.seña || 0) > 0 ? 'Abonar Seña + Diagnóstico' : 'Abonar Diagnóstico y continuar'}
-                    </button>
-                    <button
-                      className="bg-[#E57373] text-white px-4 py-2 rounded hover:bg-[#C62828] transition shadow-md"
-                      onClick={() => setOpenRejectDialog(true)}
                       disabled={processing}
                     >
-                      Rechazar Presupuesto
+                      Abonar Diagnóstico
                     </button>
-                  </>
-                ) : (
-                  <button
-                    className="bg-[#F59E0B] text-white px-4 py-2 rounded hover:bg-[#D97706] transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
-                    onClick={handleMockPayDeposit}
-                    disabled={processing || Boolean((presupuesto as any)?.diagnostico_abonado)}
-                  >
-                    {Boolean((presupuesto as any)?.diagnostico_abonado) ? 'Diagnóstico abonado' : 'Abonar Diagnóstico'}
-                  </button>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Diálogo de confirmación de rechazo */}
             <AlertDialog open={openRejectDialog} onOpenChange={setOpenRejectDialog}>
