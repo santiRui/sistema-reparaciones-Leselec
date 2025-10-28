@@ -22,30 +22,34 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    // Buscar usuario en la tabla personal por correo
-    const { data, error } = await supabase
-      .from('personal')
-      .select('*')
-      .eq('correo', username)
-      .single()
+    // 1) Login con Supabase Auth
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: username,
+      password,
+    })
 
-    if (error || !data) {
-      toast({
-        title: 'Error de autenticación',
-        description: 'Usuario o contraseña incorrectos',
-        variant: 'destructive',
-      })
+    if (signInError || !signInData?.user) {
+      toast({ title: 'Error de autenticación', description: 'Usuario o contraseña incorrectos', variant: 'destructive' })
       setIsLoading(false)
       return
     }
 
-    // Validar contraseña en texto plano
-    if (password !== data.contrasena) {
-      toast({
-        title: 'Error de autenticación',
-        description: 'Usuario o contraseña incorrectos',
-        variant: 'destructive',
-      })
+    // 2) Obtener rol y estado desde personal por user_id
+    const userId = signInData.user.id
+    const { data: persona, error: pErr } = await supabase
+      .from('personal')
+      .select('rol, nombre_completo, activo, correo')
+      .eq('user_id', userId)
+      .single()
+
+    if (pErr || !persona) {
+      toast({ title: 'Cuenta no vinculada', description: 'No se encontró el perfil del usuario.', variant: 'destructive' })
+      setIsLoading(false)
+      return
+    }
+
+    if (persona.activo === false) {
+      toast({ title: 'Acceso denegado', description: 'Usuario inactivo.', variant: 'destructive' })
       setIsLoading(false)
       return
     }
@@ -53,11 +57,11 @@ export default function LoginPage() {
     // Guardar sesión y redirigir
     toast({
       title: '¡Bienvenido!',
-      description: `Hola ${data.nombre_completo} (${data.rol})`,
+      description: `Hola ${persona.nombre_completo} (${persona.rol})`,
       variant: 'default',
     })
     localStorage.setItem('isAuthenticated', 'true')
-    localStorage.setItem('user', JSON.stringify({ username: data.correo, role: data.rol, nombre: data.nombre_completo }))
+    localStorage.setItem('user', JSON.stringify({ user_id: userId, username: persona.correo || signInData.user.email, role: persona.rol, nombre: persona.nombre_completo }))
     setIsLoading(false)
     setTimeout(() => router.push('/dashboard'), 800)
   }

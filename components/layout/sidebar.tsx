@@ -24,10 +24,14 @@ const navigation = [
   { name: "Reparación", href: "/repair", icon: Wrench },
   { name: "Entrega", href: "/delivery", icon: Package },
   { name: "Entregas Finalizadas", href: "/completed", icon: CheckCircle },
+  { name: "Orden de compra", href: "/purchase-order", icon: Package },
+  { name: "Órdenes de compra", href: "/purchase-orders", icon: Package },
+  { name: "Usuarios", href: "/admin/users", icon: Users },
 ]
 
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -35,6 +39,20 @@ export function Sidebar() {
     localStorage.removeItem("isAuthenticated")
     localStorage.removeItem("user")
     router.push("/login")
+  }
+
+  // Read role
+  if (typeof window !== 'undefined' && role === null) {
+    try {
+      const raw = localStorage.getItem('user')
+      if (raw) {
+        const u = JSON.parse(raw)
+        if (u && typeof u.role === 'string') setRole(u.role)
+        else setRole('')
+      } else {
+        setRole('')
+      }
+    } catch { setRole('') }
   }
 
   return (
@@ -67,7 +85,17 @@ export function Sidebar() {
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-2">
-            {navigation.map((item) => {
+            {(() => {
+              let items = navigation
+              if (role === 'ventas') {
+                items = navigation.filter(n => n.href === '/purchase-order' || n.href === '/purchase-orders')
+              } else if (role === 'taller') {
+                items = navigation.filter(n => n.href !== '/purchase-order' && n.href !== '/purchase-orders')
+              } else if (role === 'encargado') {
+                items = navigation
+              }
+              return items
+            })().map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
 
