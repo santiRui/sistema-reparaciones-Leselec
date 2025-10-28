@@ -15,6 +15,7 @@ import {
   Menu,
   X,
 } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: BarChart3 },
@@ -35,7 +36,10 @@ export function Sidebar() {
   const router = useRouter()
   const pathname = usePathname()
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch {}
     localStorage.removeItem("isAuthenticated")
     localStorage.removeItem("user")
     router.push("/login")
