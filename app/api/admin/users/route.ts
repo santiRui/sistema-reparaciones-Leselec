@@ -20,6 +20,24 @@ async function getRequesterRole(token?: string) {
   return persona.rol as string
 }
 
+export async function GET(req: Request) {
+  try {
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
+    const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
+    const role = await getRequesterRole(token)
+    if (role !== 'encargado') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+    const { data, error } = await supabaseAdmin
+      .from('personal')
+      .select('correo, nombre_completo, rol, activo')
+      .order('nombre_completo', { ascending: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ users: data || [] }, { status: 200 })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Error inesperado' }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''

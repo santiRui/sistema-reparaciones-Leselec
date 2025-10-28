@@ -36,12 +36,19 @@ export default function AdminUsersPage() {
   }, [router])
 
   const load = async () => {
-    const { data, error } = await supabase.from('personal').select('correo, nombre_completo, rol, activo').order('nombre_completo')
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
-      return
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const token = session.session?.access_token
+      const res = await fetch('/api/admin/users', {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'No se pudo cargar usuarios')
+      setUsers(j.users || [])
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Error inesperado', variant: 'destructive' })
     }
-    setUsers(data || [])
   }
 
   const handleCreate = async () => {
