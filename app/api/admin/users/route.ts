@@ -115,3 +115,72 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: e?.message || 'Error inesperado' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
+    const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
+    const role = await getRequesterRole(token)
+    if (role !== 'encargado') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+    const body = await req.json().catch(() => ({}))
+    const correo = (body?.correo || '').toString().trim().toLowerCase()
+    if (!correo) return NextResponse.json({ error: 'Correo requerido' }, { status: 400 })
+
+    // Obtener requester para prevenir auto-eliminación
+    const requester = token ? await supabaseAdmin.auth.getUser(token) : null
+    const requesterEmail = requester?.data?.user?.email?.toLowerCase()
+    if (requesterEmail && requesterEmail === correo) {
+      return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta' }, { status: 400 })
+    }
+
+    // Verificar si el objetivo es encargado activo y si es el último
+    const targetRes = await supabaseAdmin
+      .from('personal')
+      .select('rol, activo')
+      .eq('correo', correo)
+      .single()
+    if (targetRes.error && targetRes.error.code !== 'PGRST116') {
+      return NextResponse.json({ error: targetRes.error.message }, { status: 400 })
+    }
+    const target = targetRes.data
+    if (!target) {
+      // Si no existe en tabla personal, intentar borrar en Auth por si quedó colgado
+      const list = await supabaseAdmin.auth.admin.listUsers()
+      const found = list.data.users.find(u => u.email?.toLowerCase() === correo)
+      if (found?.id) await supabaseAdmin.auth.admin.deleteUser(found.id)
+      return NextResponse.json({ ok: true })
+    }
+
+    if (target.rol === 'encargado' && target.activo) {
+      const { data: encargados, error: encErr } = await supabaseAdmin
+        .from('personal')
+        .select('correo')
+        .eq('rol', 'encargado')
+        .eq('activo', true)
+      if (encErr) return NextResponse.json({ error: encErr.message }, { status: 400 })
+      if ((encargados || []).length <= 1) {
+        return NextResponse.json({ error: 'No se puede eliminar el último usuario Encargado activo' }, { status: 400 })
+      }
+    }
+
+    // 1) Borrar de tabla personal
+    const delDb = await supabaseAdmin.from('personal').delete().eq('correo', correo)
+    if (delDb.error) return NextResponse.json({ error: delDb.error.message }, { status: 400 })
+
+    // 2) Borrar del Auth si existe
+    const list = await supabaseAdmin.auth.admin.listUsers()
+    const found = list.data.users.find(u => u.email?.toLowerCase() === correo)
+    if (found?.id) {
+      const delAuth = await supabaseAdmin.auth.admin.deleteUser(found.id)
+      if (delAuth.error) {
+        // Si falla el borrado en Auth, devolver 207 Multi-Status-like
+        return NextResponse.json({ ok: false, warning: 'El usuario se eliminó de la base, pero no de Auth. Intente nuevamente.' }, { status: 207 })
+      }
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Error inesperado' }, { status: 500 })
+  }
+}

@@ -86,6 +86,32 @@ export default function AdminUsersPage() {
     toast({ title: 'Reset enviado', description: email })
   }
 
+  const handleDeleteUser = async (email: string) => {
+    if (!window.confirm(`¿Eliminar la cuenta ${email}? Esta acción no se puede deshacer.`)) return
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const token = session.session?.access_token
+      const res = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ correo: email })
+      })
+      const j = await res.json().catch(()=>({}))
+      if (!res.ok || j?.error) {
+        toast({ title: 'No se pudo eliminar', description: j?.error || 'Error inesperado', variant: 'destructive' })
+        return
+      }
+      if (res.status === 207) {
+        toast({ title: 'Eliminado parcialmente', description: j?.warning || 'Se eliminó en base pero no en Auth', variant: 'destructive' })
+      } else {
+        toast({ title: 'Usuario eliminado', description: email })
+      }
+      load()
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Error inesperado', variant: 'destructive' })
+    }
+  }
+
   if (role !== 'encargado') return null
 
   return (
@@ -176,7 +202,10 @@ export default function AdminUsersPage() {
                       <TableCell className="capitalize">{u.rol}</TableCell>
                       <TableCell>{u.activo ? 'Activo' : 'Inactivo'}</TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={()=>handleReset(u.correo)}>Enviar reset</Button>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={()=>handleReset(u.correo)}>Enviar reset</Button>
+                          <Button size="sm" variant="destructive" onClick={()=>handleDeleteUser(u.correo)}>Eliminar</Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
