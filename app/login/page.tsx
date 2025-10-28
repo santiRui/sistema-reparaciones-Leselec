@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,29 @@ export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
 
+  // Si ya hay sesión activa, completar contexto y redirigir
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      const user = data.session?.user
+      if (!mounted || !user) return
+      try {
+        const { data: persona } = await supabase
+          .from('personal')
+          .select('rol, nombre_completo, activo, correo')
+          .eq('user_id', user.id)
+          .single()
+        if (persona && persona.activo !== false) {
+          localStorage.setItem('isAuthenticated', 'true')
+          localStorage.setItem('user', JSON.stringify({ user_id: user.id, username: persona.correo || user.email, role: persona.rol, nombre: persona.nombre_completo }))
+          router.push('/dashboard')
+        }
+      } catch {}
+    })()
+    return () => { mounted = false }
+  }, [router])
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -29,7 +52,9 @@ export default function LoginPage() {
     })
 
     if (signInError || !signInData?.user) {
-      toast({ title: 'Error de autenticación', description: 'Usuario o contraseña incorrectos', variant: 'destructive' })
+      console.error('Auth error:', signInError?.message)
+      const msg = signInError?.message?.toLowerCase().includes('email') ? 'Revise que el correo esté confirmado' : 'Usuario o contraseña incorrectos'
+      toast({ title: 'Error de autenticación', description: msg, variant: 'destructive' })
       setIsLoading(false)
       return
     }
@@ -43,6 +68,7 @@ export default function LoginPage() {
       .single()
 
     if (pErr || !persona) {
+      console.error('Perfil error:', pErr?.message)
       toast({ title: 'Cuenta no vinculada', description: 'No se encontró el perfil del usuario.', variant: 'destructive' })
       setIsLoading(false)
       return
