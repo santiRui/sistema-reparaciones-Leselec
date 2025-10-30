@@ -33,7 +33,9 @@ export default function ClientLoginPage() {
       return
     }
     // Redirigir a la página de detalles si existe
-    router.push(`/repair/${entryNumber}`)
+    const normalized = String(entryNumber).toUpperCase().trim()
+    const target = result.numeroIngreso || normalized
+    router.push(`/repair/${target}`)
     // Si quieres evitar mostrar datos debajo, no setees el estado repair
     // setRepair(result)
 

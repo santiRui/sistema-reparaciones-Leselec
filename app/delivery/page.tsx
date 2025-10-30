@@ -415,11 +415,6 @@ export default function DeliveryPage() {
         toast({ variant: 'destructive', title: 'No se puede finalizar', description: 'Debe estar abonado el diagnóstico para finalizar esta entrega.' })
         return
       }
-      // Validar si proviene de rechazo: seña debe estar abonada
-      if ((editingRepair as any).rechazoPresupuesto && !(editingRepair as any).seniaAbonada) {
-        toast({ variant: 'destructive', title: 'No se puede finalizar', description: 'Debe estar abonada la seña para finalizar esta entrega.' })
-        return
-      }
 
       // Marcar entrega como entregada y reparación como finalizada
       await supabase

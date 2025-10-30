@@ -26,23 +26,22 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
 
   useEffect(() => {
     const fetchRepair = async () => {
-      const { data, error } = await supabase
-        .from("reparaciones")
-        .select("*, clientes(*), equipos(*), presupuestos(*), trabajos_reparacion(*), entregas(*)")
-        .eq("numero_ingreso", numeroIngreso)
-        .single();
-      if (error || !data) {
-        setRepair(null);
-      } else {
-        setRepair(data);
-        const presupuestos = Array.isArray(data.presupuestos)
-          ? [...data.presupuestos].sort((a: any, b: any) => (b?.id || 0) - (a?.id || 0))
-          : (data.presupuestos ? [data.presupuestos] : []);
-        const last = presupuestos && presupuestos.length > 0 ? presupuestos[0] : null;
-        const entrega = Array.isArray(data.entregas) ? data.entregas[0] : data.entregas;
-        if ((last && last.rechazado === true) || (entrega && entrega.motivo === 'rechazo_presupuesto')) {
+      try {
+        const res = await fetch(`/api/client-repair?entryNumber=${encodeURIComponent(numeroIngreso)}`);
+        const j = await res.json();
+        if (!res.ok || j?.error) {
+          setRepair(null);
+          setRejected(false);
+          return;
+        }
+        setRepair(j);
+        // Derivar rechazado si viene estado / flags relacionados
+        if (j?.estado_actual === 'entrega') {
           setRejected(true);
         }
+      } catch {
+        setRepair(null);
+        setRejected(false);
       }
       setLoading(false);
     };
@@ -53,123 +52,25 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
     if (!repair || processing) return;
     setProcessing(true);
     try {
-      // Si fue rechazado, el botón naranja abona diagnóstico y pasa a entrega
-      if (rejected) {
-        // Crear/asegurar registro en entregas en estado pendiente
-        await supabase
-          .from('entregas')
-          .upsert([
-            {
-              reparacion_id: repair.id,
-              estado_entrega: 'pendiente',
-              motivo: 'rechazo_presupuesto',
-            } as any,
-          ], { onConflict: 'reparacion_id' } as any);
-
-        // Marcar diagnóstico abonado en el presupuesto
-        const { data: lastPresPay } = await supabase
-          .from('presupuestos')
-          .select('id')
-          .eq('reparacion_id', repair.id)
-          .order('id', { ascending: false })
-          .limit(1)
-          .single();
-        if (lastPresPay?.id) {
-          const { error: updErr } = await supabase
-            .from('presupuestos')
-            .update({ diagnostico_abonado: true } as any)
-            .eq('id', lastPresPay.id);
-          if (updErr) {
-            console.error('Supabase update presupuestos (rechazado->diagnostico_abonado) error:', updErr);
-            toast({ variant: 'destructive', title: 'No se pudo marcar diagnóstico abonado', description: String(updErr?.message || updErr) });
-            return;
-          }
-        }
-
-        const { error } = await supabase
-          .from('reparaciones')
-          .update({ estado_actual: 'entrega', fecha_actualizacion: new Date().toISOString() })
-          .eq('id', repair.id);
-        if (error) {
-          toast({ variant: 'destructive', title: 'No se pudo mover a entrega', description: 'Intenta nuevamente.' });
-        } else {
-          toast({ title: 'Diagnóstico abonado', description: 'La reparación pasó a Entrega por presupuesto rechazado.' });
-          const { data, error: refetchError } = await supabase
-            .from('reparaciones')
-            .select('*, clientes(*), equipos(*), presupuestos(*), trabajos_reparacion(*)')
-            .eq('numero_ingreso', numeroIngreso)
-            .single();
-          if (!refetchError && data) {
-            setRepair(data);
-          }
-        }
+      const res = await fetch('/api/client-repair/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reparacionId: repair.id, rejected }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j?.error) {
+        toast({ variant: 'destructive', title: 'No se pudo registrar el pago', description: j?.error || 'Intenta nuevamente.' });
         return;
       }
-
-      // Flujo normal: abono de seña+diagnóstico y paso a reparación
-      const { data: lastPresNorm }: any = await supabase
-        .from('presupuestos')
-        .select('id, se\u00f1a')
-        .eq('reparacion_id', repair.id)
-        .order('id', { ascending: false })
-        .limit(1)
-        .single();
-      if (lastPresNorm?.id) {
-        const setSeña = Number((lastPresNorm as any)['seña'] || 0) > 0;
-        const { error: updDiagErr } = await supabase
-          .from('presupuestos')
-          .update({ diagnostico_abonado: true } as any)
-          .eq('id', lastPresNorm.id);
-        if (updDiagErr) {
-          console.error('Supabase update presupuestos (diagnostico_abonado) error:', updDiagErr);
-          toast({ variant: 'destructive', title: 'No se pudo registrar el abono en presupuesto', description: String(updDiagErr?.message || updDiagErr) });
-          return;
+      toast({ title: rejected ? 'Diagnóstico abonado' : 'Pago registrado', description: rejected ? 'La reparación pasó a Entrega por presupuesto rechazado.' : "Se registró el abono. La reparación avanzó a 'Reparación'." });
+      // Refetch de datos
+      try {
+        const r2 = await fetch(`/api/client-repair?entryNumber=${encodeURIComponent(numeroIngreso)}`);
+        const j2 = await r2.json();
+        if (r2.ok && !j2?.error) {
+          setRepair(j2);
         }
-        if (setSeña) {
-          // Intento 1: columna con tilde
-          const tryTilde = await supabase
-            .from('presupuestos')
-            .update({ ['seña_abonada']: true } as any)
-            .eq('id', lastPresNorm.id);
-          if (tryTilde.error) {
-            console.warn('Columna seña_abonada no encontrada, probando senia_abonada:', tryTilde.error);
-            // Intento 2: columna sin tilde
-            const tryNoTilde = await supabase
-              .from('presupuestos')
-              .update({ senia_abonada: true } as any)
-              .eq('id', lastPresNorm.id);
-            if (tryNoTilde.error) {
-              console.warn('No se pudo marcar seña abonada en ninguna variante:', tryNoTilde.error);
-              // No detenemos el flujo; diagnóstico quedó abonado y se avanza de etapa igual
-            }
-          }
-        }
-      }
-
-      const { error } = await supabase
-        .from('reparaciones')
-        .update({ estado_actual: 'reparacion', fecha_actualizacion: new Date().toISOString() })
-        .eq('id', repair.id);
-      if (error) {
-        toast({
-          variant: "destructive",
-          title: "No se pudo registrar el pago",
-          description: "Ocurrió un error registrando el abono. Intenta nuevamente.",
-        });
-      } else {
-        toast({
-          title: "Pago registrado",
-          description: "Se registró el abono. La reparación avanzó a 'Reparación'.",
-        });
-        const { data, error: refetchError } = await supabase
-          .from('reparaciones')
-          .select('*, clientes(*), equipos(*), presupuestos(*), trabajos_reparacion(*)')
-          .eq('numero_ingreso', numeroIngreso)
-          .single();
-        if (!refetchError && data) {
-          setRepair(data);
-        }
-      }
+      } catch {}
     } finally {
       setProcessing(false);
     }
@@ -200,6 +101,9 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
           )}
           {repair.clientes?.dniCuil && (
             <div className="mb-2"><strong>DNI/CUIL:</strong> {repair.clientes.dniCuil}</div>
+          )}
+          {!repair.clientes?.dniCuil && repair.clientes?.dni_cuil && (
+            <div className="mb-2"><strong>DNI/CUIL:</strong> {repair.clientes.dni_cuil}</div>
           )}
           {repair.clientes?.email && (
             <div className="mb-2"><strong>Email:</strong> {repair.clientes.email}</div>
