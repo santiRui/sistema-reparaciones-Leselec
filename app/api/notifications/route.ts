@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { sendWhatsapp } from "@/lib/whatsapp";
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
@@ -126,6 +127,7 @@ export async function POST(req: NextRequest) {
     console.log('[DEBUG] Configuración de URL base:', { baseUrl, VERCEL_URL: process.env.VERCEL_URL, NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL });
 
     const to = (cliente?.email || "").trim();
+    const whatsappNumber = (cliente?.telefono || "").toString().trim();
     if (!to) {
       const errorMsg = `Cliente sin email (ID: ${reparacion.cliente_id})`;
       console.error('[ERROR]', errorMsg);
@@ -138,7 +140,7 @@ export async function POST(req: NextRequest) {
       });
     }
     
-    console.log('[DEBUG] Enviando notificación a:', to, 'Tipo:', type);
+    console.log('[DEBUG] Enviando notificación a:', to, 'Tipo:', type, 'WhatsApp:', whatsappNumber || 'N/D');
 
     let recepcionista = reparacion.recepcionista || "";
     if (!recepcionista && reparacion.creado_por) {
@@ -184,6 +186,23 @@ export async function POST(req: NextRequest) {
 
     if (type === "recepcion") {
       const misReparacionesUrl = "https://sistema-reparaciones-leselec-gules.vercel.app/client-login";
+      const fechaIngreso = reparacion.fecha_creacion?.split("T")[0] || "-";
+      const equiposTexto = Array.isArray(equipos)
+        ? equipos
+            .map((eq: any) => `${eq.tipo_equipo || "Equipo"} x${eq.cantidad || 1}`)
+            .join(", ")
+        : "";
+
+      const whatsappTextLines = [
+        `Recepción registrada`,
+        `N° de Ingreso: ${numero}`,
+        `Fecha: ${fechaIngreso}`,
+        equiposTexto ? `Equipos: ${equiposTexto}` : "",
+        "",
+        "Puedes seguir tu reparación en Mis Reparaciones:",
+        misReparacionesUrl,
+      ].filter(Boolean);
+
       const html = `
         ${styles}
         <h2>Recepción registrada</h2>
@@ -201,6 +220,17 @@ export async function POST(req: NextRequest) {
         ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
       `;
       await sendEmail({ to, subject: `Recepción N° ${numero} registrada`, html });
+
+      if (whatsappNumber) {
+        try {
+          await sendWhatsapp({
+            to: whatsappNumber,
+            text: whatsappTextLines.join("\n"),
+          });
+        } catch (e) {
+          console.warn('[WARN] No se pudo enviar WhatsApp de recepción:', e);
+        }
+      }
     }
 
     if (type === "presupuesto") {
@@ -239,7 +269,7 @@ export async function POST(req: NextRequest) {
           <p>Puedes abonar la <strong>seña</strong> y el <strong>diagnóstico</strong> directamente desde la <strong>página de seguimiento</strong> o acercarte presencialmente a abonarlos para avanzar con la reparación.</p>
           ${trackingUrl ? `<p><a class=\"btn\" href=\"${trackingUrl}\" target=\"_blank\">Ir a la página de seguimiento</a></p>` : ""}
           <p>Ante cualquier duda o consulta, puedes responder a este correo o comunicarte al <strong>3875018530</strong>.</p>
-          ${misReparacionesUrl ? `<p class=\"muted\">También puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso.</p>` : ""}
+          ${misReparacionesUrl ? `<p class="muted">También puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso.</p>` : ""}
         `;
         
         console.log('[DEBUG] Enviando correo de presupuesto...');
@@ -250,6 +280,35 @@ export async function POST(req: NextRequest) {
           replyTo: process.env.EMAIL_USER
         });
         console.log('[DEBUG] Correo de presupuesto enviado exitosamente');
+
+        if (whatsappNumber) {
+          const equiposTexto = Array.isArray(equipos)
+            ? equipos
+                .map((eq: any) => `${eq.tipo_equipo || "Equipo"} x${eq.cantidad || 1}`)
+                .join(", ")
+            : "";
+
+          const whatsappTextLines = [
+            `Presupuesto disponible`,
+            `Ingreso: ${numero}`,
+            equiposTexto ? `Equipos: ${equiposTexto}` : "",
+            `Importe: ${importeTotal}`,
+            `Seña: ${senia}`,
+            `Diagnóstico: ${diagnosticoMonto}`,
+            "",
+            "Puedes ver y abonar la seña/diagnóstico en:",
+            trackingUrl,
+          ].filter(Boolean);
+
+          try {
+            await sendWhatsapp({
+              to: whatsappNumber,
+              text: whatsappTextLines.join("\n"),
+            });
+          } catch (e) {
+            console.warn('[WARN] No se pudo enviar WhatsApp de presupuesto:', e);
+          }
+        }
         
       } catch (error) {
         console.error('[ERROR] Error al enviar correo de presupuesto:', error);
@@ -298,6 +357,36 @@ export async function POST(req: NextRequest) {
           replyTo: process.env.EMAIL_USER
         });
         console.log('[DEBUG] Correo de lista de entrega enviado exitosamente');
+
+        if (whatsappNumber) {
+          const equiposTexto = Array.isArray(equipos)
+            ? equipos
+                .map((eq: any) => `${eq.tipo_equipo || "Equipo"} x${eq.cantidad || 1}`)
+                .join(", ")
+            : "";
+
+          const whatsappTextLines = [
+            `Reparación finalizada - lista para retirar`,
+            `Ingreso: ${numero}`,
+            equiposTexto ? `Equipos: ${equiposTexto}` : "",
+            `Importe: ${importeTotal}`,
+            `Seña: ${senia}`,
+            "",
+            "Retiro en: Zabala 117",
+            "Horarios:",
+            "Lunes a viernes 09:00-13:00 y 15:00-18:30",
+            "Sábados 09:30-12:30",
+          ].filter(Boolean);
+
+          try {
+            await sendWhatsapp({
+              to: whatsappNumber,
+              text: whatsappTextLines.join("\n"),
+            });
+          } catch (e) {
+            console.warn('[WARN] No se pudo enviar WhatsApp de lista de entrega:', e);
+          }
+        }
         
       } catch (error) {
         console.error('[ERROR] Error al enviar correo de lista de entrega:', error);
