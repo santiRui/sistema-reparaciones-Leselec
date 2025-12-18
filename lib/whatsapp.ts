@@ -1,6 +1,4 @@
-import fetch from "node-fetch";
-
-// Envío de mensajes vía WhatsApp Cloud API
+// Envío de mensajes vía WhatsApp Cloud API (usa fetch global de Next.js/Node)
 // Variables de entorno requeridas:
 // - WHATSAPP_TOKEN (token de acceso de la app de Meta)
 // - WHATSAPP_PHONE_ID (ID del número de teléfono de WhatsApp Business)
