@@ -173,7 +173,13 @@ export default function ReceptionPage() {
   }
 
   const isReceptionComplete = (repair: Repair) => {
-    return repair.clienteId && repair.equipos.length > 0 && repair.equipos.every(eq => eq.tipo_equipo && eq.marca && eq.numero_serie)
+    // Considerar completa la recepción cuando hay cliente y al menos un equipo
+    // con tipo y marca. El número de serie se vuelve opcional.
+    return (
+      !!repair.clienteId &&
+      repair.equipos.length > 0 &&
+      repair.equipos.every(eq => eq.tipo_equipo && eq.marca)
+    )
   }
 
   // Función para recargar reparaciones desde Supabase
@@ -347,10 +353,15 @@ export default function ReceptionPage() {
         const fetchUserId = async () => {
           const { data: personal } = await supabase
             .from('personal')
-            .select('id')
+            .select('id, nombre_completo, rol')
             .eq('correo', parsed.username)
             .single()
-          setCurrentUser({ ...parsed, id: personal?.id })
+          setCurrentUser({
+            ...parsed,
+            id: personal?.id,
+            nombre_completo: personal?.nombre_completo ?? parsed.nombre_completo,
+            role: personal?.rol ?? parsed.role,
+          })
         }
         fetchUserId()
       } else {
@@ -749,12 +760,11 @@ export default function ReceptionPage() {
                               </div>
                             </div>
                             
-                            <div className="space-y-2 mb-4">
-                              <Label>Número de Serie *</Label>
+                            <div className="space-y-2">
+                              <Label>Número de Serie</Label>
                               <Input
                                 value={equipo.numeroSerie}
                                 onChange={(e) => updateEquipo(index, 'numeroSerie', e.target.value)}
-                                required
                               />
                             </div>
                             
