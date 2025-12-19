@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+    const trackingUrlEnv = process.env.NEXT_PUBLIC_TRACKING_URL || "";
     const numero = reparacion.numero_ingreso;
     
     console.log('[DEBUG] Configuración de URL base:', { baseUrl, VERCEL_URL: process.env.VERCEL_URL, NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL });
@@ -185,7 +186,7 @@ export async function POST(req: NextRequest) {
     `;
 
     if (type === "recepcion") {
-      const misReparacionesUrl = "https://sistema-reparaciones-leselec-gules.vercel.app/client-login";
+      const misReparacionesUrl = trackingUrlEnv || `${baseUrl}/client-login`;
       const fechaIngreso = reparacion.fecha_creacion?.split("T")[0] || "-";
       const equiposTexto = Array.isArray(equipos)
         ? equipos
@@ -265,7 +266,7 @@ export async function POST(req: NextRequest) {
 
     if (type === "presupuesto") {
       try {
-        const misReparacionesUrl = "https://sistema-reparaciones-leselec-gules.vercel.app/client-login";
+        const misReparacionesUrl = trackingUrlEnv || `${baseUrl}/client-login`;
         const trackingUrl = misReparacionesUrl;
         
         console.log('[DEBUG] Generando HTML para notificación de presupuesto...');
