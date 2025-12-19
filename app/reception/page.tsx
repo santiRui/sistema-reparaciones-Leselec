@@ -117,6 +117,7 @@ export default function ReceptionPage() {
     revoluciones: "",
   }])
   const [clientSearch, setClientSearch] = useState("")
+  const [imagenes, setImagenes] = useState<File[]>([])
 
   const confirmDeleteRepair = async (repairToDelete: Repair) => {
     if (!repairToDelete) {
@@ -471,6 +472,45 @@ export default function ReceptionPage() {
         toast({ title: 'Error al registrar equipos', description: errorEquipo.message, variant: 'destructive' })
         return
       }
+
+      // Subir imágenes de recepción y guardar URLs en imagenes_recepcion
+      if (imagenes.length > 0) {
+        const imagenesToInsert: { reparacion_id: number; url: string }[] = []
+
+        for (const file of imagenes) {
+          const filePath = `reparacion-${reparacionData.id}/${Date.now()}-${file.name}`
+
+          const { error: uploadError } = await supabase.storage
+            .from('recepciones')
+            .upload(filePath, file)
+
+          if (uploadError) {
+            console.error('Error subiendo imagen:', uploadError)
+            continue
+          }
+
+          const { data: publicData } = supabase.storage
+            .from('recepciones')
+            .getPublicUrl(filePath)
+
+          if (publicData?.publicUrl) {
+            imagenesToInsert.push({
+              reparacion_id: reparacionData.id,
+              url: publicData.publicUrl,
+            })
+          }
+        }
+
+        if (imagenesToInsert.length > 0) {
+          const { error: insertImgError } = await supabase
+            .from('imagenes_recepcion')
+            .insert(imagenesToInsert)
+
+          if (insertImgError) {
+            console.error('Error guardando URLs de imágenes:', insertImgError)
+          }
+        }
+      }
       toast({ title: 'Recepción registrada', description: `La recepción y el equipo fueron registrados correctamente. N° Ingreso: ${reparacionData.numero_ingreso}`, variant: 'default' })
       // Enviar notificación por correo al cliente (recepción registrada)
       try {
@@ -504,6 +544,7 @@ export default function ReceptionPage() {
         tension: "",
         revoluciones: "",
       }])
+      setImagenes([])
       setEditingRepair(null)
       setIsDialogOpen(false)
       // Agregar la nueva reparación al estado local para mostrar el número de ingreso inmediatamente
@@ -856,6 +897,23 @@ export default function ReceptionPage() {
                           placeholder="Describa el problema reportado, estado del equipo, etc."
                           rows={3}
                         />
+                        <div className="space-y-2 pt-2">
+                          <Label>Imágenes asociadas a las observaciones</Label>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || [])
+                              setImagenes(files)
+                            }}
+                          />
+                          {imagenes.length > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              {imagenes.length} imagen(es) seleccionada(s)
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

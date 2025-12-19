@@ -193,6 +193,28 @@ export async function POST(req: NextRequest) {
             .join(", ")
         : "";
 
+      // Obtener imágenes de recepción asociadas a la reparación
+      const { data: imagenesRecepcion, error: imagenesError } = await supabase
+        .from("imagenes_recepcion")
+        .select("url, descripcion")
+        .eq("reparacion_id", reparacion.id);
+
+      if (imagenesError) {
+        console.error('[ERROR] Error al obtener imagenes_recepcion:', imagenesError);
+      }
+
+      const imagenesHtml = Array.isArray(imagenesRecepcion)
+        ? imagenesRecepcion
+            .map(
+              (img: any, index: number) => `
+              <div style="margin-bottom:8px">
+                <div style="font-size:12px;color:#555">${img.descripcion || `Imagen ${index + 1}`}</div>
+                <img src="${img.url}" alt="Imagen recepción" style="max-width:100%;height:auto;border:1px solid #e5e7eb;border-radius:4px;margin-top:4px" />
+              </div>`
+            )
+            .join("")
+        : "";
+
       const whatsappTextLines = [
         `Recepción registrada`,
         `N° de Ingreso: ${numero}`,
@@ -216,6 +238,14 @@ export async function POST(req: NextRequest) {
           <div><strong>Equipos:</strong></div>
           ${equiposHtml || "<div>-</div>"}
         </div>
+        ${
+          imagenesHtml
+            ? `<div class="card">
+                 <div><strong>Imágenes del estado del equipo al momento de la recepción:</strong></div>
+                 ${imagenesHtml}
+               </div>`
+            : ""
+        }
         <p>Puedes ingresar a <strong>Mis Reparaciones</strong> con tu número de ingreso y ver el estado en tiempo real:</p>
         ${misReparacionesUrl ? `<p><a class="btn" href="${misReparacionesUrl}" target="_blank">Ir a Mis Reparaciones</a></p>` : ""}
       `;

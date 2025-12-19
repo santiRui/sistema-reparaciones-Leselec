@@ -123,5 +123,15 @@ CREATE TABLE entregas (
     estado_entrega VARCHAR(50)
 );
 
+-- Tabla de imágenes asociadas a una reparación (recepción)
+CREATE TABLE imagenes_recepcion (
+    id SERIAL PRIMARY KEY,
+    reparacion_id INTEGER NOT NULL REFERENCES reparaciones(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    descripcion TEXT,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Índices útiles
 CREATE INDEX idx_reparaciones_cliente ON reparaciones(cliente_id);
+CREATE INDEX idx_imagenes_recepcion_reparacion ON imagenes_recepcion(reparacion_id);
