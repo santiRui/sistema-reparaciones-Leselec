@@ -47,12 +47,19 @@ export async function sendWhatsapp(params: { to: string; text: string }) {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      console.error("[ERROR] Error al enviar WhatsApp", {
+      const errorInfo = {
         status: res.status,
         statusText: res.statusText,
         body: data,
-      });
-      return;
+      };
+
+      console.error("[ERROR] Error al enviar WhatsApp", errorInfo);
+
+      // Lanzamos un error para que la capa llamadora (API / scripts) pueda ver
+      // claramente el problema devuelto por la API de Meta y no se oculte.
+      throw new Error(
+        `[WhatsApp] API error ${res.status}: ${JSON.stringify(errorInfo.body)}`
+      );
     }
 
     console.log("[DEBUG] WhatsApp enviado correctamente:", data);
