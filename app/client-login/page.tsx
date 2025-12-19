@@ -94,10 +94,6 @@ export default function ClientLoginPage() {
                 </div>
               </div>
             )}
-
-            <div className="mt-4 pt-4 border-t border-border">
-              <Button variant="outline" className="w-full bg-transparent" onClick={() => router.push("/login")}> al Login Principal</Button>
-            </div>
           </CardContent>
         </Card>
       </div>
