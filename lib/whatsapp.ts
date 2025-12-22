@@ -9,7 +9,17 @@ const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
 if (!WHATSAPP_TOKEN) console.warn("[whatsapp] Falta WHATSAPP_TOKEN");
 if (!WHATSAPP_PHONE_ID) console.warn("[whatsapp] Falta WHATSAPP_PHONE_ID");
 
-export async function sendWhatsapp(params: { to: string; text: string }) {
+type WhatsappTemplatePayload = {
+  name: string;
+  language: string; // ej: "es_AR"
+  bodyParams: (string | number | null | undefined)[];
+};
+
+export async function sendWhatsapp(params: {
+  to: string;
+  text?: string;
+  template?: WhatsappTemplatePayload;
+}) {
   console.log("[DEBUG] Iniciando envío de WhatsApp a:", params.to);
 
   if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
@@ -25,14 +35,40 @@ export async function sendWhatsapp(params: { to: string; text: string }) {
 
   const url = `https://graph.facebook.com/v17.0/${WHATSAPP_PHONE_ID}/messages`;
 
-  const body = {
-    messaging_product: "whatsapp",
-    to,
-    type: "text",
-    text: {
-      body: params.text,
-    },
-  } as const;
+  let body: any;
+
+  if (params.template) {
+    console.log("[DEBUG] Enviando WhatsApp usando plantilla:", params.template.name);
+    body = {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: params.template.name,
+        language: {
+          code: params.template.language,
+        },
+        components: [
+          {
+            type: "body",
+            parameters: (params.template.bodyParams || []).map((value) => ({
+              type: "text",
+              text: value != null ? String(value) : "",
+            })),
+          },
+        ],
+      },
+    };
+  } else {
+    body = {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: {
+        body: params.text,
+      },
+    } as const;
+  }
 
   try {
     const res = await fetch(url, {

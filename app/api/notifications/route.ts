@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
 
     const to = (cliente?.email || "").trim();
     const whatsappNumber = (cliente?.telefono || "").toString().trim();
+    let whatsappTemplate: any = null;
     if (!to) {
       const errorMsg = `Cliente sin email (ID: ${reparacion.cliente_id})`;
       console.error('[ERROR]', errorMsg);
@@ -226,6 +227,25 @@ export async function POST(req: NextRequest) {
         misReparacionesUrl,
       ].filter(Boolean);
 
+      if (whatsappNumber) {
+        whatsappTemplate = {
+          type: "recepcion",
+          to: whatsappNumber,
+          template: {
+            name: "reoaracion_ingreso", // nombre exacto definido por el usuario
+            // En Meta esta plantilla figura como "English" genérico, usamos "en"
+            language: "en",
+            bodyParams: [
+              `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+              numero,
+              fechaIngreso,
+              equiposTexto || "",
+              misReparacionesUrl,
+            ],
+          },
+        };
+      }
+
       const html = `
         ${styles}
         <h2>Recepción registrada</h2>
@@ -252,11 +272,11 @@ export async function POST(req: NextRequest) {
       `;
       await sendEmail({ to, subject: `Recepción N° ${numero} registrada`, html });
 
-      if (whatsappNumber) {
+      if (whatsappNumber && whatsappTemplate?.template) {
         try {
           await sendWhatsapp({
             to: whatsappNumber,
-            text: whatsappTextLines.join("\n"),
+            template: whatsappTemplate.template,
           });
         } catch (e) {
           console.warn('[WARN] No se pudo enviar WhatsApp de recepción:', e);
@@ -331,10 +351,28 @@ export async function POST(req: NextRequest) {
             trackingUrl,
           ].filter(Boolean);
 
+          whatsappTemplate = {
+            type: "presupuesto",
+            to: whatsappNumber,
+            template: {
+              name: "reparacion_presupuestado", // nombre exacto definido por el usuario
+              language: "es_AR",
+              bodyParams: [
+                `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+                numero,
+                equiposTexto || "",
+                importeTotal,
+                senia,
+                diagnosticoMonto,
+                trackingUrl,
+              ],
+            },
+          };
+
           try {
             await sendWhatsapp({
               to: whatsappNumber,
-              text: whatsappTextLines.join("\n"),
+              template: whatsappTemplate.template,
             });
           } catch (e) {
             console.warn('[WARN] No se pudo enviar WhatsApp de presupuesto:', e);
@@ -409,10 +447,30 @@ export async function POST(req: NextRequest) {
             "Sábados 09:30-12:30",
           ].filter(Boolean);
 
+          whatsappTemplate = {
+            type: "lista_entrega",
+            to: whatsappNumber,
+            template: {
+              name: "reparacion_lista_entrega", // nombre exacto definido por el usuario
+              // En Meta esta plantilla está configurada actualmente solo en inglés genérico
+              language: "en",
+              bodyParams: [
+                `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+                numero,
+                equiposTexto || "",
+                importeTotal,
+                senia,
+                "Zabala 117",
+                "Lunes a viernes 09:00-13:00 y 15:00-18:30",
+                "Sábados 09:30-12:30",
+              ],
+            },
+          };
+
           try {
             await sendWhatsapp({
               to: whatsappNumber,
-              text: whatsappTextLines.join("\n"),
+              template: whatsappTemplate.template,
             });
           } catch (e) {
             console.warn('[WARN] No se pudo enviar WhatsApp de lista de entrega:', e);
@@ -428,7 +486,8 @@ export async function POST(req: NextRequest) {
     console.log('[DEBUG] Notificación procesada exitosamente');
     return new Response(JSON.stringify({ 
       ok: true,
-      message: 'Notificación enviada correctamente'
+      message: 'Notificación enviada correctamente',
+      whatsappTemplate,
     }), { 
       status: 200,
       headers: { 'Content-Type': 'application/json' }
