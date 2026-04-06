@@ -107,6 +107,11 @@ export default function CompletedPage() {
           .select('*')
           .eq('reparacion_id', rep.id)
           .single();
+        const { data: cajeroPersona } = await supabase
+          .from('personal')
+          .select('nombre_completo, correo')
+          .eq('id', entrega.cajero_id)
+          .maybeSingle();
         const rechazoPresupuesto = Boolean(presupuesto?.rechazado) || entrega?.motivo === 'rechazo_presupuesto';
         const estadoMotivo = rechazoPresupuesto ? 'Presupuesto rechazado' : 'Completada';
 
@@ -152,9 +157,10 @@ export default function CompletedPage() {
           armador: trabajo?.armador || '',
           estadoReparacion: trabajo?.estado_reparacion || '',
           observacionesReparacion: trabajo?.observaciones || '',
-          cajero: entrega.cajero_id || '',
+          cajero: cajeroPersona?.nombre_completo || cajeroPersona?.correo || '',
           recepcionista: rep.recepcionista || '',
           observaciones: rep.observaciones_recepcion || '',
+          fechaFinalizacion: rep.fecha_entrega || entrega.fecha_retiro || '',
         }
       }))
       setCompletedRepairs(repairsWithDetails.filter(Boolean))

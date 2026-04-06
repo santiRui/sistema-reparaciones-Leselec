@@ -104,6 +104,7 @@ export default function DeliveryPage() {
   const [viewingRepair, setViewingRepair] = useState<Repair | null>(null)
   const [editingRepair, setEditingRepair] = useState<Repair | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentCajeroId, setCurrentCajeroId] = useState<number | null>(null)
   const [deliveryFormData, setDeliveryFormData] = useState({
     cajero: "",
     fechaRetiro: "",
@@ -257,8 +258,23 @@ export default function DeliveryPage() {
 
     const userData = localStorage.getItem("user")
     if (userData) {
-      setCurrentUser(JSON.parse(userData))
-      setDeliveryFormData((prev) => ({ ...prev, cajero: JSON.parse(userData).username }))
+      const parsedUser = JSON.parse(userData)
+      setCurrentUser(parsedUser)
+      setDeliveryFormData((prev) => ({ ...prev, cajero: parsedUser.username }))
+
+      // Buscar el id numérico de la tabla personal para usarlo como cajero_id
+      if (parsedUser.user_id) {
+        supabase
+          .from('personal')
+          .select('id')
+          .eq('user_id', parsedUser.user_id)
+          .single()
+          .then(({ data, error }) => {
+            if (!error && data?.id) {
+              setCurrentCajeroId(data.id)
+            }
+          })
+      }
     }
 
     // Load clients
@@ -396,7 +412,7 @@ export default function DeliveryPage() {
       .upsert([
         {
           reparacion_id: Number(editingRepair.id),
-          cajero_id: currentUser?.id || null,
+          cajero_id: currentCajeroId || null,
           fecha_retiro: deliveryFormData.fechaRetiro || null,
           nombre_retirante: deliveryFormData.nombreRetirante,
           apellido_retirante: deliveryFormData.apellidoRetirante,

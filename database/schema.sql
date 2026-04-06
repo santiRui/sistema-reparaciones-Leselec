@@ -8,7 +8,8 @@ CREATE TABLE clientes (
     telefono VARCHAR(20),
     correo VARCHAR(100),
     email VARCHAR(100), -- agregado para compatibilidad con frontend
-    direccion TEXT
+    direccion TEXT,
+    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
 -- Tabla de personal (usuarios del sistema)
@@ -18,7 +19,8 @@ CREATE TABLE personal (
     contrasena VARCHAR(255) NOT NULL,
     nombre_completo VARCHAR(150) NOT NULL,
     rol VARCHAR(20) NOT NULL CHECK (rol IN ('admin', 'ventas', 'cajero', 'encargado')),
-    activo BOOLEAN DEFAULT TRUE
+    activo BOOLEAN DEFAULT TRUE,
+    user_id UUID UNIQUE
 );
 
 -- Tabla de reparaciones
@@ -93,7 +95,14 @@ CREATE TABLE presupuestos (
     descripcion_proceso TEXT,
     repuestos_necesarios TEXT,
     importe_total NUMERIC(12,2) NOT NULL,
-    seña NUMERIC(12, 2)
+    seña NUMERIC(12, 2),
+    diagnostico NUMERIC(12,2),
+    emision_factura BOOLEAN DEFAULT FALSE,
+    diagnostico_abonado BOOLEAN DEFAULT FALSE,
+    senia_abonada BOOLEAN DEFAULT FALSE,
+    rechazado BOOLEAN DEFAULT FALSE,
+    estado VARCHAR(20),
+    fecha_aprobacion TIMESTAMP
 );
 
 -- Tabla de trabajo de reparación
@@ -107,7 +116,11 @@ CREATE TABLE trabajos_reparacion (
     prioridad VARCHAR(50),
     fecha_inicio DATE,
     fecha_fin DATE,
-    observaciones TEXT
+    observaciones TEXT,
+    encargado_reparacion TEXT,
+    armador TEXT,
+    observaciones_reparacion TEXT,
+    UNIQUE (reparacion_id)
 );
 
 -- Tabla de entregas
@@ -120,7 +133,8 @@ CREATE TABLE entregas (
     apellido_retirante VARCHAR(100),
     dni_retirante VARCHAR(20),
     firma_observaciones TEXT,
-    estado_entrega VARCHAR(50)
+    estado_entrega VARCHAR(50),
+    UNIQUE (reparacion_id)
 );
 
 -- Tabla de imágenes asociadas a una reparación (recepción)
