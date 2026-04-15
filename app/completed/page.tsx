@@ -9,8 +9,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Eye, Printer, CheckCircle, XCircle, Calendar } from "lucide-react"
+import { Search, Eye, Printer, CheckCircle, XCircle, Calendar, Trash2 } from "lucide-react"
 import { Sidebar } from "@/components/layout/sidebar"
 
 // Mock data for completed deliveries
@@ -116,6 +127,7 @@ export default function CompletedPage() {
         const estadoMotivo = rechazoPresupuesto ? 'Presupuesto rechazado' : 'Completada';
 
         return {
+          entregaId: entrega.id,
           id: rep.id.toString(),
           numeroIngreso: rep.numero_ingreso,
           fechaIngreso: rep.fecha_creacion.split('T')[0],
@@ -178,6 +190,68 @@ export default function CompletedPage() {
   const handleViewRepair = (repair: any) => {
     setSelectedRepair(repair)
     setIsViewDialogOpen(true)
+  }
+
+  const handleDeleteCompleted = async (repair: any) => {
+    try {
+      const reparacionId = Number(repair.id)
+      if (!reparacionId || Number.isNaN(reparacionId)) return
+
+      // 1) Eliminar presupuesto(s) asociados
+      const { error: errorPresupuesto } = await supabase
+        .from('presupuestos')
+        .delete()
+        .eq('reparacion_id', reparacionId)
+      if (errorPresupuesto) {
+        console.error('Error al eliminar presupuesto de reparación completada:', errorPresupuesto)
+        return
+      }
+
+      // 2) Eliminar trabajos de reparación
+      const { error: errorTrabajos } = await supabase
+        .from('trabajos_reparacion')
+        .delete()
+        .eq('reparacion_id', reparacionId)
+      if (errorTrabajos) {
+        console.error('Error al eliminar trabajos de reparación completada:', errorTrabajos)
+        return
+      }
+
+      // 3) Eliminar equipos asociados
+      const { error: errorEquipos } = await supabase
+        .from('equipos')
+        .delete()
+        .eq('reparacion_id', reparacionId)
+      if (errorEquipos) {
+        console.error('Error al eliminar equipos de reparación completada:', errorEquipos)
+        return
+      }
+
+      // 4) Eliminar entregas asociadas
+      const { error: errorEntregas } = await supabase
+        .from('entregas')
+        .delete()
+        .eq('reparacion_id', reparacionId)
+      if (errorEntregas) {
+        console.error('Error al eliminar entregas de reparación completada:', errorEntregas)
+        return
+      }
+
+      // 5) Eliminar la reparación
+      const { error: errorReparacion } = await supabase
+        .from('reparaciones')
+        .delete()
+        .eq('id', reparacionId)
+      if (errorReparacion) {
+        console.error('Error al eliminar reparación completada:', errorReparacion)
+        return
+      }
+
+      // 6) Actualizar estado local
+      setCompletedRepairs(prev => prev.filter(r => r.id !== repair.id))
+    } catch (e) {
+      console.error('Error inesperado al eliminar reparación completada:', e)
+    }
   }
 
   const handlePrintRepair = (repair: any) => {
@@ -380,32 +454,32 @@ export default function CompletedPage() {
             </Card>
 
             <Card className="shadow-sm border-0 bg-white cursor-pointer" onClick={() => setShowMonthSelector(true)}>
-  <CardContent className="p-6">
-    <div className="flex items-center space-x-4">
-      <div className="p-3 bg-blue-100 rounded-full">
-        <Calendar className="w-6 h-6 text-blue-600" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">
-          {monthNames[selectedMonth]} {selectedYear}
-        </p>
-        <p className="text-3xl font-bold text-blue-600">
-          {completedRepairs.filter((r) => {
-            const fecha = new Date(r.fechaEntrega);
-            return fecha.getMonth() === selectedMonth && fecha.getFullYear() === selectedYear;
-          }).length}
-        </p>
-      </div>
-    </div>
-    {showMonthSelector && (
-      <div className="mt-4 flex items-center gap-2">
-        <button onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}>&lt;</button>
-        <span className="font-medium">{monthNames[selectedMonth]} {selectedYear}</span>
-        <button onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}>&gt;</button>
-      </div>
-    )}
-  </CardContent>
-</Card>
+              <CardContent className="p-6">
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 bg-blue-100 rounded-full">
+                    <Calendar className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">
+                      {monthNames[selectedMonth]} {selectedYear}
+                    </p>
+                    <p className="text-3xl font-bold text-blue-600">
+                      {completedRepairs.filter((r) => {
+                        const fecha = new Date(r.fechaEntrega);
+                        return fecha.getMonth() === selectedMonth && fecha.getFullYear() === selectedYear;
+                      }).length}
+                    </p>
+                  </div>
+                </div>
+                {showMonthSelector && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <button onClick={() => setSelectedMonth(m => m === 0 ? 11 : m - 1)}>&lt;</button>
+                    <span className="font-medium">{monthNames[selectedMonth]} {selectedYear}</span>
+                    <button onClick={() => setSelectedMonth(m => m === 11 ? 0 : m + 1)}>&gt;</button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           <Card className="shadow-sm border-0 bg-white">
@@ -426,7 +500,7 @@ export default function CompletedPage() {
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Equipo</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Marca</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">N° Serie</TableHead>
-                                            <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Ingreso</TableHead>
+                      <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Ingreso</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Fecha Entrega</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Estado</TableHead>
                       <TableHead className="px-6 py-4 font-semibold text-gray-900">Acciones</TableHead>
@@ -455,7 +529,7 @@ export default function CompletedPage() {
                         </TableCell>
                         <TableCell className="px-6 py-4">{repair.marcaEquipo}</TableCell>
                         <TableCell className="px-6 py-4">{repair.numeroSerie}</TableCell>
-                                                <TableCell className="px-6 py-4">{repair.fechaIngreso ? new Date(repair.fechaIngreso + 'T00:00:00').toLocaleDateString('es-AR') : ''}</TableCell>
+                        <TableCell className="px-6 py-4">{repair.fechaIngreso ? new Date(repair.fechaIngreso + 'T00:00:00').toLocaleDateString('es-AR') : ''}</TableCell>
                         <TableCell className="px-6 py-4">{repair.fechaEntrega ? new Date(repair.fechaEntrega + 'T00:00:00').toLocaleDateString('es-AR') : ''}</TableCell>
                         <TableCell className="px-6 py-4">
                           {repair.rechazoPresupuesto ? (
@@ -486,6 +560,34 @@ export default function CompletedPage() {
                             >
                               <Printer className="w-4 h-4" />
                             </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="hover:bg-red-50 hover:border-red-200 text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar reparación finalizada?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Esta acción eliminará de forma permanente la reparación <strong>{repair.numeroIngreso}</strong>
+                                    y todos sus datos asociados (presupuesto, trabajos, equipos y entregas).
+                                    
+                                    Esta operación no se puede deshacer.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteCompleted(repair)} className="bg-red-600 text-white hover:bg-red-700">
+                                    Sí, eliminar entrega
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
