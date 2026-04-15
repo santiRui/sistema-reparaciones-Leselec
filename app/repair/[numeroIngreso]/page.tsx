@@ -48,34 +48,6 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
     fetchRepair();
   }, [numeroIngreso]);
 
-  const handleMockPayDeposit = async () => {
-    if (!repair || processing) return;
-    setProcessing(true);
-    try {
-      const res = await fetch('/api/client-repair/pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reparacionId: repair.id, rejected }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || j?.error) {
-        toast({ variant: 'destructive', title: 'No se pudo registrar el pago', description: j?.error || 'Intenta nuevamente.' });
-        return;
-      }
-      toast({ title: rejected ? 'Diagnóstico abonado' : 'Pago registrado', description: rejected ? 'La reparación pasó a Entrega por presupuesto rechazado.' : "Se registró el abono. La reparación avanzó a 'Reparación'." });
-      // Refetch de datos
-      try {
-        const r2 = await fetch(`/api/client-repair?entryNumber=${encodeURIComponent(numeroIngreso)}`);
-        const j2 = await r2.json();
-        if (r2.ok && !j2?.error) {
-          setRepair(j2);
-        }
-      } catch {}
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   if (loading) return <div className="p-8">Cargando...</div>;
   if (!repair) return <div className="p-8 text-red-600">No se encontró la reparación.</div>;
 
@@ -234,35 +206,16 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
                 );
               }
 
-              // Si no está abonado todavía, mostrar botones según flujo
+              // Si no está abonado todavía, solo mostrar leyenda informativa (sin botones de pago)
               return (
-                <div className="mt-6 flex flex-col md:flex-row gap-4">
-                  {!fueRechazado ? (
-                    <>
-                      <button
-                        className="bg-[#43A047] text-white px-4 py-2 rounded hover:bg-[#388E3C] transition shadow-md"
-                        onClick={handleMockPayDeposit}
-                        disabled={processing || repair.estado_actual !== 'presupuesto'}
-                      >
-                        {haySeña ? 'Abonar Seña + Diagnóstico' : 'Abonar Diagnóstico y continuar'}
-                      </button>
-                      <button
-                        className="bg-[#E57373] text-white px-4 py-2 rounded hover:bg-[#C62828] transition shadow-md"
-                        onClick={() => setOpenRejectDialog(true)}
-                        disabled={processing}
-                      >
-                        Rechazar Presupuesto
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="bg-[#F59E0B] text-white px-4 py-2 rounded hover:bg-[#D97706] transition shadow-md"
-                      onClick={handleMockPayDeposit}
-                      disabled={processing}
-                    >
-                      Abonar Diagnóstico
-                    </button>
-                  )}
+                <div className="mt-4 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                     style={{ color: '#374151', borderColor: '#d1d5db', background: '#f9fafb' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 7zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  <span>
+                    Pagos pendientes. Acérquese a caja para abonar la seña y/o diagnóstico según corresponda.
+                  </span>
                 </div>
               );
             })()}

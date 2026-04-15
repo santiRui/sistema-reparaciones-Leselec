@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
     const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
     const role = await getRequesterRole(token)
-    if (role !== 'encargado') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    if (role !== 'encargado' && role !== 'admin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
     const { data, error } = await supabaseAdmin
       .from('personal')
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
     const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
     const role = await getRequesterRole(token)
-    if (role !== 'encargado') {
+    if (role !== 'encargado' && role !== 'admin') {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
@@ -79,14 +79,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // Upsert en personal
+    // Upsert en personal (con contrasena dummy para cumplir NOT NULL)
     const upsert = await supabaseAdmin.from('personal').upsert({
       user_id: userId,
       correo,
       nombre_completo,
       rol,
       activo: !!activo,
-    }, { onConflict: 'correo' }).select().single()
+      // Esta columna ya no se usa para autenticación, pero es NOT NULL en el esquema
+      contrasena: (claveTemporal || '').toString(),
+    } as any, { onConflict: 'correo' } as any).select().single()
     if (upsert.error) return NextResponse.json({ error: upsert.error.message }, { status: 400 })
 
     return NextResponse.json({ ok: true, usuario: upsert.data }, { status: 200 })
@@ -101,7 +103,7 @@ export async function PATCH(req: Request) {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
     const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
     const role = await getRequesterRole(token)
-    if (role !== 'encargado') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    if (role !== 'encargado' && role !== 'admin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
     const body = await req.json()
     const { correo } = body as { correo: string }
@@ -121,7 +123,7 @@ export async function DELETE(req: Request) {
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization') || ''
     const token = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7) : undefined
     const role = await getRequesterRole(token)
-    if (role !== 'encargado') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    if (role !== 'encargado' && role !== 'admin') return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
     const body = await req.json().catch(() => ({}))
     const correo = (body?.correo || '').toString().trim().toLowerCase()

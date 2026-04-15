@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Search, Edit, Eye, DollarSign, ArrowRight, FileText, Printer, Trash2 } from "lucide-react"
+import { Search, Edit, Eye, DollarSign, ArrowRight, FileText, Printer, Trash2, XCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface Client {
@@ -93,6 +93,7 @@ interface Repair {
   senia_abonada?: boolean
   rechazado?: boolean
   emiteFactura?: boolean
+  diagnosticoAbonado?: boolean
 }
 
 export default function BudgetPage() {
@@ -110,6 +111,7 @@ export default function BudgetPage() {
   const [deletingRepair, setDeletingRepair] = useState<Repair | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [budgetStatusFilter, setBudgetStatusFilter] = useState<'all' | 'with' | 'without'>('all')
   const [budgetFormData, setBudgetFormData] = useState({
     diagnosticoFalla: "",
     descripcionProceso: "",
@@ -214,6 +216,9 @@ export default function BudgetPage() {
           importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
           seña: presupuesto?.["seña"] ? presupuesto["seña"].toString() : '',
           emiteFactura: presupuesto?.emision_factura || false,
+          seniaAbonada: (presupuesto as any)?.senia_abonada === true,
+          diagnosticoAbonado: presupuesto?.diagnostico_abonado === true,
+          rechazado: presupuesto?.rechazado === true,
           
           // Datos del cliente
           cliente: cliente ? {
@@ -339,19 +344,7 @@ export default function BudgetPage() {
 
       // Continuar con Supabase aunque la sesión no esté disponible; si falla, el catch mostrará detalle
 
-      // 1. Verificar si ya existe un presupuesto para esta reparación
-      const { data: existingPresupuesto, error: fetchError } = await supabase
-        .from('presupuestos')
-        .select('id')
-        .eq('reparacion_id', editingRepair.id)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Supabase fetch presupuesto error:', fetchError);
-        throw new Error(fetchError.message || 'Error consultando presupuesto existente');
-      }
-
-      // 2. Actualizar o crear el presupuesto
+      // 1. Preparar datos de presupuesto
       const budgetData = {
         diagnostico_falla: budgetFormData.diagnosticoFalla,
         descripcion_proceso: budgetFormData.descripcionProceso,
@@ -362,23 +355,32 @@ export default function BudgetPage() {
         emision_factura: budgetFormData.emiteFactura || false,
       };
 
-      let operationError = null;
-      
-      if (existingPresupuesto?.id) {
-        // Actualizar presupuesto existente
+      // 2. Obtener el último presupuesto (si existe) para decidir entre update/insert
+      const { data: lastPres, error: fetchError } = await supabase
+        .from('presupuestos')
+        .select('id')
+        .eq('reparacion_id', Number(editingRepair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fetchError && (fetchError as any).code !== 'PGRST116') {
+        console.error('Supabase fetch presupuesto error:', fetchError);
+        throw new Error(fetchError.message || 'Error consultando presupuesto existente');
+      }
+
+      let operationError = null as any;
+
+      if (lastPres?.id) {
         const { error } = await supabase
           .from('presupuestos')
-          .update(budgetData)
-          .eq('id', existingPresupuesto.id);
+          .update(budgetData as any)
+          .eq('id', lastPres.id);
         operationError = error;
       } else {
-        // Crear nuevo presupuesto
         const { error } = await supabase
           .from('presupuestos')
-          .insert([{
-            ...budgetData,
-            reparacion_id: Number(editingRepair.id),
-          }]);
+          .insert([{ ...(budgetData as any), reparacion_id: Number(editingRepair.id) }]);
         operationError = error;
       }
 
@@ -555,46 +557,170 @@ export default function BudgetPage() {
   }
 
   const handleMoveToRepair = async (repair: Repair) => {
-    // Aquí debes adaptar según cómo guardes el estado de pago o rechazo
-    const seniaAbonada = repair.seniaAbonada === true || repair.senia_abonada === true; // ajusta el nombre real
-    const rechazado = repair.rechazado === true;
-    if (!seniaAbonada && !rechazado) {
-      toast({
-        variant: "destructive",
-        title: "No permitido",
-        description: "Para pasar a reparación, la seña debe estar abonada o el presupuesto debe ser rechazado.",
-      });
-      return;
-    }
     try {
-      // Actualizar en Supabase
+      // Obtener el último presupuesto de la reparación
+      const { data: presupuesto, error: presErr } = await supabase
+        .from('presupuestos')
+        .select('id, diagnostico, diagnostico_abonado, "seña", senia_abonada, rechazado')
+        .eq('reparacion_id', Number(repair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (presErr) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al verificar presupuesto',
+          description: presErr.message || 'No se pudo obtener el presupuesto.',
+        });
+        return;
+      }
+
+      const montoDiagnostico = Number(presupuesto?.diagnostico || 0);
+      const diagAb = presupuesto?.diagnostico_abonado === true;
+      const montoSenia = Number((presupuesto as any)?.['seña'] || 0);
+      const seniaAb = (presupuesto as any)?.senia_abonada === true;
+      const rechazado = (presupuesto as any)?.rechazado === true;
+
+      // Si no está rechazado, validar pagos según montos
+      if (!rechazado) {
+        if (montoDiagnostico > 0 && !diagAb) {
+          toast({
+            variant: 'destructive',
+            title: 'No permitido',
+            description: 'Para pasar a reparación, el diagnóstico debe estar abonado.',
+          });
+          return;
+        }
+
+        if (montoSenia > 0 && !seniaAb) {
+          toast({
+            variant: 'destructive',
+            title: 'No permitido',
+            description: 'Para pasar a reparación, la seña debe estar abonada.',
+          });
+          return;
+        }
+      }
+
+      // Actualizar en Supabase: si está rechazado, se cierra; si no, pasa a reparación
       const { error } = await supabase
         .from('reparaciones')
         .update({ estado_actual: rechazado ? 'finalizada' : 'reparacion', fecha_actualizacion: new Date().toISOString() })
         .eq('id', repair.id);
+
       if (error) {
         toast({
-          variant: "destructive",
-          title: "Error al mover",
+          variant: 'destructive',
+          title: 'Error al mover',
           description: `No se pudo mover el presupuesto a reparación: ${error.message}`,
-        })
+        });
         return;
       }
+
       toast({
-        title: rechazado ? "Presupuesto rechazado" : "Movido a reparación",
-        description: rechazado ? `El presupuesto ${repair.numeroIngreso} fue rechazado y se cerró la reparación.` : `El presupuesto ${repair.numeroIngreso} ha sido movido a reparación.`,
+        title: rechazado ? 'Presupuesto rechazado' : 'Movido a reparación',
+        description: rechazado
+          ? `El presupuesto ${repair.numeroIngreso} fue rechazado y se cerró la reparación.`
+          : `El presupuesto ${repair.numeroIngreso} ha sido movido a reparación.`,
       });
+
       setTimeout(() => {
         if (typeof window !== 'undefined') {
           window.location.reload();
         }
-      }, 1500)
+      }, 1500);
     } catch (error) {
       toast({
-        variant: "destructive",
-        title: "Error inesperado",
-        description: "Ocurrió un error inesperado al mover el presupuesto.",
-      })
+        variant: 'destructive',
+        title: 'Error inesperado',
+        description: 'Ocurrió un error inesperado al mover el presupuesto.',
+      });
+    }
+  }
+
+  const handleRejectBudget = async (repair: Repair) => {
+    try {
+      // Marcar el último presupuesto como rechazado
+      const { data: lastPres, error: presErr } = await supabase
+        .from('presupuestos')
+        .select('id')
+        .eq('reparacion_id', Number(repair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (presErr) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al rechazar presupuesto',
+          description: presErr.message || 'No se pudo obtener el presupuesto.',
+        });
+        return;
+      }
+
+      if (lastPres?.id) {
+        const { error: updPresErr } = await supabase
+          .from('presupuestos')
+          .update({ rechazado: true } as any)
+          .eq('id', lastPres.id);
+
+        if (updPresErr) {
+          toast({
+            variant: 'destructive',
+            title: 'Error al rechazar presupuesto',
+            description: updPresErr.message,
+          });
+          return;
+        }
+      }
+
+      // Enviar a entrega por rechazo de presupuesto
+      const { error: entregaErr } = await supabase
+        .from('entregas')
+        .upsert([
+          {
+            reparacion_id: Number(repair.id),
+            estado_entrega: 'pendiente',
+          } as any,
+        ], { onConflict: 'reparacion_id' } as any);
+
+      if (entregaErr) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al enviar a entrega',
+          description: entregaErr.message,
+        });
+        return;
+      }
+
+      const { error: updRepErr } = await supabase
+        .from('reparaciones')
+        .update({ estado_actual: 'entrega', fecha_actualizacion: new Date().toISOString() })
+        .eq('id', repair.id);
+
+      if (updRepErr) {
+        toast({
+          variant: 'destructive',
+          title: 'Error al actualizar reparación',
+          description: updRepErr.message,
+        });
+        return;
+      }
+
+      // Sacar del listado local de presupuestos
+      setBudgetRepairs(prev => prev.filter(r => r.id !== repair.id));
+
+      toast({
+        title: 'Presupuesto rechazado',
+        description: `La reparación ${repair.numeroIngreso} fue marcada como rechazada y enviada a Entrega.`,
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error inesperado',
+        description: 'Ocurrió un error al rechazar el presupuesto.',
+      });
     }
   }
 
@@ -651,6 +777,10 @@ export default function BudgetPage() {
     const client = clients.find((c) => c.id === repair.clienteId)
     const clientName = client ? `${client.nombre} ${client.apellido}` : ""
 
+    const hasBudget = Boolean(repair.diagnosticoFalla && repair.importe)
+    if (budgetStatusFilter === 'with' && !hasBudget) return false
+    if (budgetStatusFilter === 'without' && hasBudget) return false
+
     return (
       repair.numeroIngreso.toLowerCase().includes(searchTerm.toLowerCase()) ||
       repair.equipo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -658,6 +788,92 @@ export default function BudgetPage() {
       clientName.toLowerCase().includes(searchTerm.toLowerCase())
     )
   })
+
+  const toggleSeniaAbonada = async (repair: Repair) => {
+    try {
+      const { data: presupuesto, error: presErr } = await supabase
+        .from('presupuestos')
+        .select('id, "seña", senia_abonada')
+        .eq('reparacion_id', Number(repair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+      if (presErr || !presupuesto?.id) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo actualizar la seña',
+          description: presErr?.message || 'No se encontró presupuesto para esta reparación.',
+        })
+        return
+      }
+      const current = (presupuesto as any).senia_abonada === true
+      const target = !current
+
+      const { error: updErr } = await supabase
+        .from('presupuestos')
+        .update({ senia_abonada: target } as any)
+        .eq('id', presupuesto.id)
+      if (updErr) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo actualizar la seña',
+          description: updErr.message,
+        })
+        return
+      }
+
+      setBudgetRepairs(prev => prev.map((r) => r.id === repair.id ? { ...r, seniaAbonada: target } : r))
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error inesperado',
+        description: 'No se pudo actualizar el estado de la seña.',
+      })
+    }
+  }
+
+  const toggleDiagnosticoAbonado = async (repair: Repair) => {
+    try {
+      const { data: presupuesto, error: presErr } = await supabase
+        .from('presupuestos')
+        .select('id, diagnostico, diagnostico_abonado')
+        .eq('reparacion_id', Number(repair.id))
+        .order('id', { ascending: false })
+        .limit(1)
+        .single();
+      if (presErr || !presupuesto?.id) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo actualizar el diagnóstico',
+          description: presErr?.message || 'No se encontró presupuesto para esta reparación.',
+        })
+        return
+      }
+      const target = !Boolean(presupuesto.diagnostico_abonado)
+      const { error: updErr } = await supabase
+        .from('presupuestos')
+        .update({ diagnostico_abonado: target } as any)
+        .eq('id', presupuesto.id)
+      if (updErr) {
+        toast({
+          variant: 'destructive',
+          title: 'No se pudo actualizar el diagnóstico',
+          description: updErr.message,
+        })
+        return
+      }
+      setBudgetRepairs(prev => prev.map(r => r.id === repair.id ? {
+        ...r,
+        diagnosticoAbonado: target,
+      } : r))
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error inesperado',
+        description: 'No se pudo actualizar el estado del diagnóstico.',
+      })
+    }
+  }
 
   // Imprimir presupuesto
   const handlePrintBudget = (repair: Repair) => {
@@ -825,6 +1041,34 @@ export default function BudgetPage() {
             </Card>
           </div>
 
+          {/* Filtro por estado de presupuesto */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-sm text-muted-foreground">Filtrar por estado de presupuesto:</span>
+            <div className="inline-flex rounded-md border bg-background">
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm border-r ${budgetStatusFilter === 'all' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+                onClick={() => setBudgetStatusFilter('all')}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm border-r ${budgetStatusFilter === 'with' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+                onClick={() => setBudgetStatusFilter('with')}
+              >
+                Presupuestados
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 text-sm ${budgetStatusFilter === 'without' ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+                onClick={() => setBudgetStatusFilter('without')}
+              >
+                Sin presupuesto
+              </button>
+            </div>
+          </div>
+
           {/* Budget Repairs Table */}
           <Card>
             <CardHeader>
@@ -896,9 +1140,23 @@ export default function BudgetPage() {
                           </TableCell>
                           <TableCell>
                             {repair.seña ? (
-                              <div className="flex items-center gap-1">
-                                <DollarSign className="h-4 w-4 text-blue-600" />
-                                <span className="font-medium">{Number(repair.seña).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-4 w-4 text-blue-600" />
+                                  <span className="font-medium">{Number(repair.seña).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSeniaAbonada(repair)}
+                                  className="text-[11px] px-2 py-0.5 rounded-full border"
+                                  style={{
+                                    color: repair.seniaAbonada ? '#166534' : '#374151',
+                                    borderColor: repair.seniaAbonada ? '#16a34a' : '#d1d5db',
+                                    background: repair.seniaAbonada ? '#dcfce7' : '#f9fafb',
+                                  }}
+                                >
+                                  {repair.seniaAbonada ? 'Abonada' : 'Marcar como abonada'}
+                                </button>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">-</span>
@@ -906,9 +1164,23 @@ export default function BudgetPage() {
                           </TableCell>
                           <TableCell>
                             {repair.diagnostico ? (
-                              <div className="flex items-center gap-1">
-                                <DollarSign className="h-4 w-4 text-blue-600" />
-                                <span className="font-medium">{Number(repair.diagnostico).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-4 w-4 text-blue-600" />
+                                  <span className="font-medium">{Number(repair.diagnostico).toLocaleString("es-AR", { style: "decimal", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDiagnosticoAbonado(repair)}
+                                  className="text-[11px] px-2 py-0.5 rounded-full border"
+                                  style={{
+                                    color: repair.diagnosticoAbonado ? '#166534' : '#374151',
+                                    borderColor: repair.diagnosticoAbonado ? '#16a34a' : '#d1d5db',
+                                    background: repair.diagnosticoAbonado ? '#dcfce7' : '#f9fafb',
+                                  }}
+                                >
+                                  {repair.diagnosticoAbonado ? 'Abonado' : 'Marcar como abonado'}
+                                </button>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">-</span>
@@ -948,7 +1220,7 @@ export default function BudgetPage() {
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                    <AlertDialogAction 
+                                    <AlertDialogAction
                                       onClick={async () => {
                                         try {
                                           await confirmDeleteBudget(repair)
@@ -964,6 +1236,37 @@ export default function BudgetPage() {
                                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                     >
                                       Eliminar
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    title="Presupuesto rechazado (enviar a Entrega)"
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <XCircle className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>¿Rechazar presupuesto y enviar a Entrega?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Esta acción marcará el presupuesto como <strong>rechazado</strong> y moverá la reparación al estado de <strong>Entrega pendiente</strong>.
+                                      <br />
+                                      Podrá gestionar la entrega desde la pantalla de <strong>Entrega</strong>.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleRejectBudget(repair)}
+                                      className="bg-red-600 text-white hover:bg-red-700"
+                                    >
+                                      Sí, rechazar presupuesto
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>

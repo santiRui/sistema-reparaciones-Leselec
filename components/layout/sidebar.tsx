@@ -25,8 +25,6 @@ const navigation = [
   { name: "Reparación", href: "/repair", icon: Wrench },
   { name: "Entrega", href: "/delivery", icon: Package },
   { name: "Entregas Finalizadas", href: "/completed", icon: CheckCircle },
-  { name: "Orden de compra", href: "/purchase-order", icon: Package },
-  { name: "Órdenes de compra", href: "/purchase-orders", icon: Package },
   { name: "Usuarios", href: "/admin/users", icon: Users },
 ]
 
@@ -92,9 +90,9 @@ export function Sidebar() {
             {(() => {
               let items = navigation
               if (role === 'ventas') {
-                items = navigation.filter(n => n.href === '/purchase-order' || n.href === '/purchase-orders')
+                items = navigation
               } else if (role === 'taller') {
-                items = navigation.filter(n => n.href !== '/purchase-order' && n.href !== '/purchase-orders')
+                items = navigation
               } else if (role === 'encargado') {
                 items = navigation
               }

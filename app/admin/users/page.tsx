@@ -30,7 +30,6 @@ export default function AdminUsersPage() {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}')
       setRole(u.role || '')
-      if (u.role !== 'encargado') { router.push('/dashboard'); return }
     } catch { router.push('/login') }
     load()
   }, [router])
@@ -61,7 +60,7 @@ export default function AdminUsersPage() {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ correo, nombre_completo: nombre, rol, activo, claveTemporal: enviarReset ? undefined : (claveTemporal || undefined), enviarReset }),
+        body: JSON.stringify({ correo, nombre_completo: nombre, rol, activo, claveTemporal: claveTemporal || undefined, enviarReset }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Error creando usuario')
@@ -112,8 +111,6 @@ export default function AdminUsersPage() {
     }
   }
 
-  if (role !== 'encargado') return null
-
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -160,18 +157,21 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="md:col-span-2">
+                <label className="text-sm font-medium">Contraseña / clave temporal</label>
+                <Input
+                  type="password"
+                  value={claveTemporal}
+                  onChange={e=>setClaveTemporal(e.target.value)}
+                  placeholder="Ej: Temp-1234"
+                />
+              </div>
+
+              <div className="md:col-span-2">
                 <div className="flex items-center gap-2">
                   <input id="enviarReset" type="checkbox" checked={enviarReset} onChange={e=>setEnviarReset(e.target.checked)} />
                   <label htmlFor="enviarReset" className="text-sm">Enviar email de restablecimiento (recomendado)</label>
                 </div>
               </div>
-
-              {!enviarReset && (
-                <div className="md:col-span-2">
-                  <label className="text-sm font-medium">Clave temporal</label>
-                  <Input value={claveTemporal} onChange={e=>setClaveTemporal(e.target.value)} placeholder="Ej: Temp-1234" />
-                </div>
-              )}
 
               <div className="md:col-span-2">
                 <Button onClick={handleCreate} disabled={loading} className="w-full">{loading ? 'Creando…' : 'Crear usuario'}</Button>

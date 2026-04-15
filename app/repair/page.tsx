@@ -221,7 +221,7 @@ export default function RepairPage() {
       setClients(JSON.parse(savedClients))
     }
 
-    // Cargar reparaciones en etapa 'presupuesto' desde Supabase
+    // Cargar reparaciones en etapa 'presupuesto' desde Supabase, con datos de cliente y equipos
     const loadBudgetRepairs = async () => {
       const { data, error } = await supabase
         .from('reparaciones')
@@ -231,7 +231,73 @@ export default function RepairPage() {
       if (error) {
         console.error('Error cargando reparaciones de presupuesto:', error)
       } else if (data) {
-        setBudgetRepairs(data as Repair[])
+        const repairsWithDetails = await Promise.all((data || []).map(async (rep: any) => {
+          const { data: equipos } = await supabase
+            .from('equipos')
+            .select('*')
+            .eq('reparacion_id', rep.id);
+          const { data: cliente } = await supabase
+            .from('clientes')
+            .select('*')
+            .eq('id', rep.cliente_id)
+            .single();
+          const { data: presupuesto } = await supabase
+            .from('presupuestos')
+            .select('*')
+            .eq('reparacion_id', rep.id)
+            .order('id', { ascending: false })
+            .limit(1)
+            .single();
+
+          return {
+            id: rep.id.toString(),
+            numeroIngreso: rep.numero_ingreso,
+            fechaIngreso: rep.fecha_creacion.split('T')[0],
+            recepcionista: '',
+            clienteId: rep.cliente_id?.toString() || '',
+            cliente: cliente ? {
+              id: cliente.id.toString(),
+              nombre: cliente.nombre,
+              apellido: cliente.apellido,
+              dniCuil: cliente.dni_cuil,
+              tipoCliente: cliente.tipo_cliente,
+              telefono: cliente.telefono,
+              email: cliente.email,
+              direccion: cliente.direccion,
+            } : undefined,
+            equipos: (equipos || []).map((eq: any) => ({
+              id: eq.id.toString(),
+              tipo_equipo: eq.tipo_equipo,
+              marca: eq.marca,
+              numero_serie: eq.numero_serie,
+              cantidad: eq.cantidad || 1,
+              potencia: eq.potencia,
+              tension: eq.tension,
+              revoluciones: eq.revoluciones,
+            })),
+            equipo: equipos && equipos[0] ? equipos[0].tipo_equipo : '',
+            marcaEquipo: equipos && equipos[0] ? equipos[0].marca : '',
+            numeroSerie: equipos && equipos[0] ? equipos[0].numero_serie : '',
+            elementosFaltantes: rep.elementos_faltantes || '',
+            accesorios: rep.accesorios || '',
+            potencia: equipos && equipos[0] ? equipos[0].potencia : '',
+            tension: equipos && equipos[0] ? equipos[0].tension : '',
+            revoluciones: equipos && equipos[0] ? equipos[0].revoluciones : '',
+            numeroRemito: rep.numero_remito || '',
+            numeroOrdenCompra: rep.numero_orden_compra || '',
+            observaciones: rep.observaciones_recepcion || '',
+            estado: rep.estado_actual,
+            fechaCreacion: rep.fecha_creacion,
+            fechaActualizacion: rep.fecha_actualizacion || '',
+            diagnosticoFalla: presupuesto?.diagnostico_falla || '',
+            descripcionProceso: presupuesto?.descripcion_proceso || '',
+            repuestos: presupuesto?.repuestos_necesarios || '',
+            importe: presupuesto?.importe_total ? presupuesto.importe_total.toString() : '',
+            seña: presupuesto?.seña ? presupuesto.seña.toString() : '',
+          } as Repair;
+        }));
+
+        setBudgetRepairs(repairsWithDetails as Repair[])
       }
     }
 
@@ -638,7 +704,7 @@ export default function RepairPage() {
                     ) : (
                       <div className="space-y-3">
                         {budgetRepairs.map((repair) => {
-                          const client = clients.find((c) => c.id === repair.clienteId)
+                          const client = repair.cliente
                           return (
                             <Card key={repair.id} className="p-4">
                               <div className="flex items-center justify-between">
