@@ -280,13 +280,12 @@ export default function ClientsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="dniCuil">DNI / CUIL *</Label>
+                      <Label htmlFor="dniCuil">DNI / CUIL</Label>
                       <Input
                         id="dniCuil"
                         value={formData.dniCuil}
                         onChange={(e) => setFormData({ ...formData, dniCuil: e.target.value })}
                         placeholder="20-12345678-9"
-                        required
                       />
                     </div>
                     <div className="space-y-2">
@@ -320,24 +319,22 @@ export default function ClientsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email *</Label>
+                      <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        required
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="direccion">Dirección *</Label>
+                    <Label htmlFor="direccion">Dirección</Label>
                     <Input
                       id="direccion"
                       value={formData.direccion}
                       onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                      required
                     />
                   </div>
 
