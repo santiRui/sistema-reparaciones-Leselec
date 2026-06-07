@@ -126,31 +126,20 @@ export default function ReceptionPage() {
     }
     
     try {
-      console.log('Iniciando eliminación de reparación:', repairToDelete.id)
+      console.log('Iniciando borrado lógico de reparación en recepción:', repairToDelete.id)
       
-      // 1. Primero eliminamos los equipos asociados
-      const { error: equiposError } = await supabase
-        .from('equipos')
-        .delete()
-        .eq('reparacion_id', repairToDelete.id)
-      
-      if (equiposError) {
-        console.error('Error al eliminar equipos:', equiposError)
-        throw new Error('Error al eliminar los equipos asociados')
-      }
-      
-      // 2. Luego eliminamos la reparación
+      // Marcar la reparación como "deleted" sin eliminar registros relacionados
       const { error: reparacionError } = await supabase
         .from('reparaciones')
-        .delete()
+        .update({ estado_actual: 'deleted', fecha_actualizacion: new Date().toISOString() })
         .eq('id', repairToDelete.id)
       
       if (reparacionError) {
-        console.error('Error al eliminar reparación:', reparacionError)
-        throw new Error('No se pudo eliminar la reparación')
+        console.error('Error al marcar reparación como deleted:', reparacionError)
+        throw new Error('No se pudo marcar la reparación como eliminada')
       }
       
-      // Actualizar el estado local inmediatamente
+      // Actualizar el estado local inmediatamente (quitarla de la vista)
       setRepairs(prevRepairs => {
         const updatedRepairs = prevRepairs.filter(rep => rep.id !== repairToDelete.id)
         console.log('Reparaciones después de eliminar:', updatedRepairs.length)

@@ -232,9 +232,8 @@ export async function POST(req: NextRequest) {
           type: "recepcion",
           to: whatsappNumber,
           template: {
-            name: "reoaracion_ingreso", // nombre exacto definido por el usuario
-            // En Meta esta plantilla figura como "English" genérico, usamos "en"
-            language: "en",
+            name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
+            language: "es_AR", // plantillas configuradas en español (Argentina)
             bodyParams: [
               `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
               numero,
@@ -355,8 +354,8 @@ export async function POST(req: NextRequest) {
             type: "presupuesto",
             to: whatsappNumber,
             template: {
-              name: "reparacion_presupuestado", // nombre exacto definido por el usuario
-              language: "es_AR",
+              name: "presupuesto", // nuevo nombre exacto definido por el usuario en Meta
+              language: "es_AR", // español (Argentina)
               bodyParams: [
                 `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
                 numero,
@@ -451,9 +450,8 @@ export async function POST(req: NextRequest) {
             type: "lista_entrega",
             to: whatsappNumber,
             template: {
-              name: "reparacion_lista_entrega", // nombre exacto definido por el usuario
-              // En Meta esta plantilla está configurada actualmente solo en inglés genérico
-              language: "en",
+              name: "reparacion_lista_entrega", // nombre exacto definido por el usuario en Meta
+              language: "es_AR", // español (Argentina)
               bodyParams: [
                 `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
                 numero,

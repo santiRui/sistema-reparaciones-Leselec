@@ -197,60 +197,20 @@ export default function CompletedPage() {
       const reparacionId = Number(repair.id)
       if (!reparacionId || Number.isNaN(reparacionId)) return
 
-      // 1) Eliminar presupuesto(s) asociados
-      const { error: errorPresupuesto } = await supabase
-        .from('presupuestos')
-        .delete()
-        .eq('reparacion_id', reparacionId)
-      if (errorPresupuesto) {
-        console.error('Error al eliminar presupuesto de reparación completada:', errorPresupuesto)
-        return
-      }
-
-      // 2) Eliminar trabajos de reparación
-      const { error: errorTrabajos } = await supabase
-        .from('trabajos_reparacion')
-        .delete()
-        .eq('reparacion_id', reparacionId)
-      if (errorTrabajos) {
-        console.error('Error al eliminar trabajos de reparación completada:', errorTrabajos)
-        return
-      }
-
-      // 3) Eliminar equipos asociados
-      const { error: errorEquipos } = await supabase
-        .from('equipos')
-        .delete()
-        .eq('reparacion_id', reparacionId)
-      if (errorEquipos) {
-        console.error('Error al eliminar equipos de reparación completada:', errorEquipos)
-        return
-      }
-
-      // 4) Eliminar entregas asociadas
-      const { error: errorEntregas } = await supabase
-        .from('entregas')
-        .delete()
-        .eq('reparacion_id', reparacionId)
-      if (errorEntregas) {
-        console.error('Error al eliminar entregas de reparación completada:', errorEntregas)
-        return
-      }
-
-      // 5) Eliminar la reparación
+      // Borrado lógico: marcar la reparación como "deleted" sin eliminar datos relacionados
       const { error: errorReparacion } = await supabase
         .from('reparaciones')
-        .delete()
+        .update({ estado_actual: 'deleted', fecha_actualizacion: new Date().toISOString() })
         .eq('id', reparacionId)
       if (errorReparacion) {
-        console.error('Error al eliminar reparación completada:', errorReparacion)
+        console.error('Error al marcar reparación completada como deleted:', errorReparacion)
         return
       }
 
-      // 6) Actualizar estado local
+      // Actualizar estado local (quitarla de la vista)
       setCompletedRepairs(prev => prev.filter(r => r.id !== repair.id))
     } catch (e) {
-      console.error('Error inesperado al eliminar reparación completada:', e)
+      console.error('Error inesperado al eliminar (borrado lógico) reparación completada:', e)
     }
   }
 
@@ -572,18 +532,16 @@ export default function CompletedPage() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>¿Eliminar reparación finalizada?</AlertDialogTitle>
+                                  <AlertDialogTitle>¿Ocultar reparación finalizada?</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Esta acción eliminará de forma permanente la reparación <strong>{repair.numeroIngreso}</strong>
-                                    y todos sus datos asociados (presupuesto, trabajos, equipos y entregas).
-                                    
-                                    Esta operación no se puede deshacer.
+                                    Esta acción marcará la reparación <strong>{repair.numeroIngreso}</strong> como eliminada y dejará de mostrarse en la lista.
+                                    Los datos permanecerán guardados en el sistema para referencia interna.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                   <AlertDialogAction onClick={() => handleDeleteCompleted(repair)} className="bg-red-600 text-white hover:bg-red-700">
-                                    Sí, eliminar entrega
+                                    Sí, ocultar reparación
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>

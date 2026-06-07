@@ -499,39 +499,17 @@ export default function BudgetPage() {
     }
     
     try {
-      console.log('Iniciando eliminación de presupuesto:', repairToDelete.id)
+      console.log('Iniciando borrado lógico de presupuesto/reparación:', repairToDelete.id)
       
-      // 1. Eliminar presupuesto asociado
-      const { error: errorPresupuesto } = await supabase
-        .from('presupuestos')
-        .delete()
-        .eq('reparacion_id', repairToDelete.id)
-      
-      if (errorPresupuesto) {
-        console.error('Error al eliminar presupuesto:', errorPresupuesto)
-        throw new Error('Error al eliminar los datos del presupuesto')
-      }
-      
-      // 2. Eliminar equipos asociados
-      const { error: errorEquipo } = await supabase
-        .from('equipos')
-        .delete()
-        .eq('reparacion_id', repairToDelete.id)
-      
-      if (errorEquipo) {
-        console.error('Error al eliminar equipos:', errorEquipo)
-        throw new Error('Error al eliminar los equipos asociados')
-      }
-      
-      // 3. Eliminar la reparación
+      // Borrado lógico: marcar la reparación como "deleted" sin eliminar presupuestos ni equipos
       const { error: errorReparacion } = await supabase
         .from('reparaciones')
-        .delete()
+        .update({ estado_actual: 'deleted', fecha_actualizacion: new Date().toISOString() })
         .eq('id', repairToDelete.id)
       
       if (errorReparacion) {
-        console.error('Error al eliminar reparación:', errorReparacion)
-        throw new Error('No se pudo eliminar la reparación')
+        console.error('Error al marcar reparación como deleted:', errorReparacion)
+        throw new Error('No se pudo marcar la reparación como eliminada')
       }
       
       // Actualizar el estado local de budgetRepairs inmediatamente
