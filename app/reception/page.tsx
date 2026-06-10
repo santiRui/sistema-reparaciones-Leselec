@@ -405,16 +405,14 @@ export default function ReceptionPage() {
       return
     }
     try {
-      // Crear la reparación (el número de ingreso se genera automáticamente)
+      // Crear la reparación (el número de ingreso se genera automáticamente por trigger en la BD)
       // Obtener la fecha actual en formato dd/mm/aaaa
       const now = new Date();
       const fechaIngreso = formatFecha(now); // dd/mm/aaaa
-      // Insertar la reparación con la fecha actual
-      // Insertar la reparación con numero_ingreso vacío para que el trigger lo genere
+      // Insertar la reparación con la fecha actual (sin enviar numero_ingreso)
       const { data: reparacionData, error: reparacionError } = await supabase
         .from('reparaciones')
         .insert({
-          numero_ingreso: '',
           cliente_id: parseInt(formData.clienteId),
           estado_actual: 'recepcion',
           creado_por: currentUser?.id,
@@ -568,6 +566,19 @@ export default function ReceptionPage() {
       } else {
         fetchRepairs();
       }
+
+      // Enviar notificación por correo al cliente (recepción registrada) en segundo plano
+      fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'recepcion',
+          reparacionId: reparacionData.id,
+          numeroIngreso: (reparacionCompleta && reparacionCompleta.numero_ingreso) ? reparacionCompleta.numero_ingreso : reparacionData.numero_ingreso,
+        }),
+      }).catch((notifyErr) => {
+        console.warn('No se pudo enviar el correo de recepción:', notifyErr)
+      })
     } catch (err: any) {
       toast({ title: 'Error inesperado', description: err.message || 'Ocurrió un error', variant: 'destructive' })
     }
