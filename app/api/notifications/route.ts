@@ -233,13 +233,12 @@ export async function POST(req: NextRequest) {
           to: whatsappNumber,
           template: {
             name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
-            language: "es_AR", // plantillas configuradas en español (Argentina)
+            language: "en", // plantilla configurada en Meta con idioma English
             bodyParams: [
               `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
               numero,
               fechaIngreso,
               equiposTexto || "",
-              misReparacionesUrl,
             ],
           },
         };
@@ -363,7 +362,6 @@ export async function POST(req: NextRequest) {
                 importeTotal,
                 senia,
                 diagnosticoMonto,
-                trackingUrl,
               ],
             },
           };
@@ -458,9 +456,6 @@ export async function POST(req: NextRequest) {
                 equiposTexto || "",
                 importeTotal,
                 senia,
-                "Zabala 117",
-                "Lunes a viernes 09:00-13:00 y 15:00-18:30",
-                "Sábados 09:30-12:30",
               ],
             },
           };
