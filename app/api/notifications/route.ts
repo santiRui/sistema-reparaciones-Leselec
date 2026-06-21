@@ -234,8 +234,10 @@ export async function POST(req: NextRequest) {
           template: {
             name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
             language: "en", // plantilla configurada en Meta con idioma English
-            bodyParams: [
+            headerParams: [
               `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+            ],
+            bodyParams: [
               numero,
               fechaIngreso,
               equiposTexto || "",
@@ -355,8 +357,10 @@ export async function POST(req: NextRequest) {
             template: {
               name: "presupuesto", // nuevo nombre exacto definido por el usuario en Meta
               language: "es_AR", // español (Argentina)
-              bodyParams: [
+              headerParams: [
                 `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+              ],
+              bodyParams: [
                 numero,
                 equiposTexto || "",
                 importeTotal,
@@ -450,8 +454,10 @@ export async function POST(req: NextRequest) {
             template: {
               name: "reparacion_lista_entrega", // nombre exacto definido por el usuario en Meta
               language: "es_AR", // español (Argentina)
-              bodyParams: [
+              headerParams: [
                 `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
+              ],
+              bodyParams: [
                 numero,
                 equiposTexto || "",
                 importeTotal,

@@ -12,6 +12,7 @@ if (!WHATSAPP_PHONE_ID) console.warn("[whatsapp] Falta WHATSAPP_PHONE_ID");
 type WhatsappTemplatePayload = {
   name: string;
   language: string; // ej: "es_AR"
+  headerParams?: (string | number | null | undefined)[];
   bodyParams: (string | number | null | undefined)[];
 };
 
@@ -49,6 +50,17 @@ export async function sendWhatsapp(params: {
           code: params.template.language,
         },
         components: [
+          ...(params.template.headerParams && params.template.headerParams.length > 0
+            ? [
+                {
+                  type: "header",
+                  parameters: params.template.headerParams.map((value) => ({
+                    type: "text",
+                    text: value != null ? String(value) : "",
+                  })),
+                },
+              ]
+            : []),
           {
             type: "body",
             parameters: (params.template.bodyParams || []).map((value) => ({
