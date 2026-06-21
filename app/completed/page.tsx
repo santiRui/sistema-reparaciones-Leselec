@@ -96,7 +96,7 @@ export default function CompletedPage() {
           .select('*')
           .eq('id', entrega.reparacion_id)
           .single();
-        if (!rep) return null;
+        if (!rep || rep.estado_actual === 'deleted') return null;
         const { data: equipos } = await supabase
           .from('equipos')
           .select('*')
@@ -197,10 +197,25 @@ export default function CompletedPage() {
       const reparacionId = Number(repair.id)
       if (!reparacionId || Number.isNaN(reparacionId)) return
 
+      // Capturar el estado actual para poder restaurar luego
+      const { data: actual } = await supabase
+        .from('reparaciones')
+        .select('estado_actual')
+        .eq('id', reparacionId)
+        .single()
+      const estadoAnterior = actual?.estado_actual && actual.estado_actual !== 'deleted'
+        ? actual.estado_actual
+        : 'entrega'
+
       // Borrado lógico: marcar la reparación como "deleted" sin eliminar datos relacionados
       const { error: errorReparacion } = await supabase
         .from('reparaciones')
-        .update({ estado_actual: 'deleted', fecha_actualizacion: new Date().toISOString() })
+        .update({
+          estado_actual: 'deleted',
+          estado_anterior: estadoAnterior,
+          fecha_eliminacion: new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+        })
         .eq('id', reparacionId)
       if (errorReparacion) {
         console.error('Error al marcar reparación completada como deleted:', errorReparacion)

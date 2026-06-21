@@ -233,14 +233,13 @@ export async function POST(req: NextRequest) {
           to: whatsappNumber,
           template: {
             name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
-            language: "en", // plantilla configurada en Meta con idioma English
-            headerParams: [
-              `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
-            ],
+            language: "es", // Spanish
+            // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
             bodyParams: [
-              numero,
-              fechaIngreso,
-              equiposTexto || "",
+              { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
+              { name: "repair_number", value: numero },
+              { name: "repair_date", value: fechaIngreso },
+              { name: "equipment_list", value: equiposTexto || "" },
             ],
           },
         };
@@ -356,16 +355,15 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "presupuesto", // nuevo nombre exacto definido por el usuario en Meta
-              language: "es_AR", // español (Argentina)
-              headerParams: [
-                `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
-              ],
+              language: "es", // Spanish
+              // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
-                numero,
-                equiposTexto || "",
-                importeTotal,
-                senia,
-                diagnosticoMonto,
+                { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
+                { name: "repair_number", value: numero },
+                { name: "equipment_list", value: equiposTexto || "" },
+                { name: "total_amount", value: importeTotal },
+                { name: "deposit_amount", value: senia },
+                { name: "diagnostic_amount", value: diagnosticoMonto },
               ],
             },
           };
@@ -453,15 +451,14 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "reparacion_lista_entrega", // nombre exacto definido por el usuario en Meta
-              language: "es_AR", // español (Argentina)
-              headerParams: [
-                `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim(),
-              ],
+              language: "es", // Spanish
+              // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
-                numero,
-                equiposTexto || "",
-                importeTotal,
-                senia,
+                { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
+                { name: "repair_number", value: numero },
+                { name: "equipment_list", value: equiposTexto || "" },
+                { name: "total_amount", value: importeTotal },
+                { name: "deposit_amount", value: senia },
               ],
             },
           };

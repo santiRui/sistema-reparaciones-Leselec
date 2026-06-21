@@ -9,12 +9,35 @@ const WHATSAPP_PHONE_ID = process.env.WHATSAPP_PHONE_ID;
 if (!WHATSAPP_TOKEN) console.warn("[whatsapp] Falta WHATSAPP_TOKEN");
 if (!WHATSAPP_PHONE_ID) console.warn("[whatsapp] Falta WHATSAPP_PHONE_ID");
 
+type WhatsappParam =
+  | string
+  | number
+  | null
+  | undefined
+  | { name: string; value: string | number | null | undefined };
+
 type WhatsappTemplatePayload = {
   name: string;
   language: string; // ej: "es_AR"
-  headerParams?: (string | number | null | undefined)[];
-  bodyParams: (string | number | null | undefined)[];
+  headerParams?: WhatsappParam[];
+  bodyParams: WhatsappParam[];
 };
+
+// Construye un parámetro de plantilla. Si el valor es un objeto { name, value },
+// se incluye `parameter_name` (requerido por plantillas con variables nombradas).
+function buildTemplateParam(param: WhatsappParam) {
+  if (param != null && typeof param === "object") {
+    return {
+      type: "text",
+      parameter_name: param.name,
+      text: param.value != null ? String(param.value) : "",
+    };
+  }
+  return {
+    type: "text",
+    text: param != null ? String(param) : "",
+  };
+}
 
 export async function sendWhatsapp(params: {
   to: string;
@@ -54,19 +77,13 @@ export async function sendWhatsapp(params: {
             ? [
                 {
                   type: "header",
-                  parameters: params.template.headerParams.map((value) => ({
-                    type: "text",
-                    text: value != null ? String(value) : "",
-                  })),
+                  parameters: params.template.headerParams.map(buildTemplateParam),
                 },
               ]
             : []),
           {
             type: "body",
-            parameters: (params.template.bodyParams || []).map((value) => ({
-              type: "text",
-              text: value != null ? String(value) : "",
-            })),
+            parameters: (params.template.bodyParams || []).map(buildTemplateParam),
           },
         ],
       },

@@ -128,10 +128,25 @@ export default function ReceptionPage() {
     try {
       console.log('Iniciando borrado lógico de reparación en recepción:', repairToDelete.id)
       
+      // Capturar el estado actual para poder restaurar luego
+      const { data: actual } = await supabase
+        .from('reparaciones')
+        .select('estado_actual')
+        .eq('id', repairToDelete.id)
+        .single()
+      const estadoAnterior = actual?.estado_actual && actual.estado_actual !== 'deleted'
+        ? actual.estado_actual
+        : 'recepcion'
+
       // Marcar la reparación como "deleted" sin eliminar registros relacionados
       const { error: reparacionError } = await supabase
         .from('reparaciones')
-        .update({ estado_actual: 'deleted', fecha_actualizacion: new Date().toISOString() })
+        .update({
+          estado_actual: 'deleted',
+          estado_anterior: estadoAnterior,
+          fecha_eliminacion: new Date().toISOString(),
+          fecha_actualizacion: new Date().toISOString(),
+        })
         .eq('id', repairToDelete.id)
       
       if (reparacionError) {

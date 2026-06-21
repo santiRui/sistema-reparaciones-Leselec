@@ -11,6 +11,7 @@ import {
   Package,
   CheckCircle,
   BarChart3,
+  Trash2,
   LogOut,
   Menu,
   X,
@@ -25,6 +26,7 @@ const navigation = [
   { name: "Reparación", href: "/repair", icon: Wrench },
   { name: "Entrega", href: "/delivery", icon: Package },
   { name: "Entregas Finalizadas", href: "/completed", icon: CheckCircle },
+  { name: "Papelera", href: "/admin/papelera", icon: Trash2 },
   { name: "Usuarios", href: "/admin/users", icon: Users },
 ]
 
