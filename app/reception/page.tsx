@@ -581,19 +581,6 @@ export default function ReceptionPage() {
       } else {
         fetchRepairs();
       }
-
-      // Enviar notificación por correo al cliente (recepción registrada) en segundo plano
-      fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'recepcion',
-          reparacionId: reparacionData.id,
-          numeroIngreso: (reparacionCompleta && reparacionCompleta.numero_ingreso) ? reparacionCompleta.numero_ingreso : reparacionData.numero_ingreso,
-        }),
-      }).catch((notifyErr) => {
-        console.warn('No se pudo enviar el correo de recepción:', notifyErr)
-      })
     } catch (err: any) {
       toast({ title: 'Error inesperado', description: err.message || 'Ocurrió un error', variant: 'destructive' })
     }
