@@ -1366,33 +1366,6 @@ export default function BudgetPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="block">¿Se emite factura?</Label>
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="emiteFactura"
-                          value="no"
-                          checked={!budgetFormData.emiteFactura}
-                          onChange={() => setBudgetFormData({ ...budgetFormData, emiteFactura: false })}
-                          className="w-4 h-4"
-                        />
-                        <span>No</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="emiteFactura"
-                          value="si"
-                          checked={budgetFormData.emiteFactura}
-                          onChange={() => setBudgetFormData({ ...budgetFormData, emiteFactura: true })}
-                          className="w-4 h-4"
-                        />
-                        <span>Sí</span>
-                      </label>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
                     <Label htmlFor="diagnosticoFalla">Diagnóstico de Falla *</Label>
                     <Textarea
                       id="diagnosticoFalla"
