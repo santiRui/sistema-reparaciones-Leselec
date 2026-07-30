@@ -701,6 +701,21 @@ export default function BudgetPage() {
         return;
       }
 
+      // Enviar notificación de lista de entrega para informar retiro por presupuesto rechazado
+      try {
+        await fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'lista_entrega',
+            reparacionId: repair.id,
+            numeroIngreso: repair.numeroIngreso,
+          }),
+        });
+      } catch (notifyErr) {
+        console.warn('No se pudo enviar la notificación de lista de entrega tras rechazar presupuesto:', notifyErr);
+      }
+
       // Sacar del listado local de presupuestos
       setBudgetRepairs(prev => prev.filter(r => r.id !== repair.id));
 
@@ -1398,6 +1413,18 @@ export default function BudgetPage() {
                       placeholder="Liste los repuestos necesarios con cantidades y especificaciones"
                       rows={3}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={budgetFormData.emiteFactura}
+                        onChange={(e) => setBudgetFormData({ ...budgetFormData, emiteFactura: e.target.checked })}
+                        className="w-4 h-4"
+                      />
+                      <span>Importe + impuestos</span>
+                    </label>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

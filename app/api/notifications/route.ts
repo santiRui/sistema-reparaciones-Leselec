@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     console.log('[DEBUG] Cuerpo de la solicitud:', JSON.stringify(body, null, 2));
     
     const { type, reparacionId, numeroIngreso } = body as {
-      type: "recepcion" | "presupuesto" | "lista_entrega";
+      type: "recepcion" | "presupuesto" | "lista_entrega" | "entrega_retirada";
       reparacionId?: string | number;
       numeroIngreso?: string;
     };
@@ -77,10 +77,10 @@ export async function POST(req: NextRequest) {
 
     // Datos asociados
     console.log('[DEBUG] Obteniendo datos asociados a la reparación...');
-    let equipos, cliente, presupuesto, trabajo;
+    let equipos, cliente, presupuesto, trabajo, entrega;
     
     try {
-      const [equiposResult, clienteResult, presupuestoResult, trabajoResult] = await Promise.all([
+      const [equiposResult, clienteResult, presupuestoResult, trabajoResult, entregaResult] = await Promise.all([
         supabase.from("equipos").select("*").eq("reparacion_id", reparacion.id),
         supabase.from("clientes").select("*").eq("id", reparacion.cliente_id).single(),
         supabase
@@ -89,14 +89,16 @@ export async function POST(req: NextRequest) {
           .eq("reparacion_id", reparacion.id)
           .order("id", { ascending: false })
           .limit(1)
-          .maybeSingle(),
-        supabase.from("trabajos_reparacion").select("*").eq("reparacion_id", reparacion.id).maybeSingle(),
+          .single(),
+        supabase.from("trabajos_reparacion").select("*").eq("reparacion_id", reparacion.id).single(),
+        supabase.from("entregas").select("*").eq("reparacion_id", reparacion.id).single(),
       ]);
       
       equipos = equiposResult.data;
       cliente = clienteResult.data;
       presupuesto = presupuestoResult.data;
       trabajo = trabajoResult.data;
+      entrega = entregaResult.data;
       
       console.log('[DEBUG] Datos obtenidos:', {
         equiposCount: equipos?.length || 0,
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
       if (clienteResult.error) console.error('[ERROR] Error al obtener cliente:', clienteResult.error);
       if (presupuestoResult.error) console.error('[ERROR] Error al obtener presupuesto:', presupuestoResult.error);
       if (trabajoResult.error) console.error('[ERROR] Error al obtener trabajo:', trabajoResult.error);
+      if (entregaResult.error) console.error('[ERROR] Error al obtener entrega:', entregaResult.error);
       
     } catch (error) {
       console.error('[ERROR] Error al obtener datos asociados:', error);
@@ -233,7 +236,7 @@ export async function POST(req: NextRequest) {
           to: whatsappNumber,
           template: {
             name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
-            language: "es", // Spanish
+            language: "es_AR", // Spanish (Argentina)
             // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
             bodyParams: [
               { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
@@ -290,8 +293,12 @@ export async function POST(req: NextRequest) {
         
         console.log('[DEBUG] Generando HTML para notificación de presupuesto...');
         
-        const importeTotal = typeof presupuesto?.importe_total === "number" ? 
+        const importeBase = typeof presupuesto?.importe_total === "number" ? 
           presupuesto.importe_total.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
+        const importeConImpuestosTexto =
+          importeBase !== "-"
+            ? `${importeBase}${presupuesto?.emision_factura ? " + impuestos" : ""}`
+            : "-";
         const senia = typeof (presupuesto as any)?.seña === "number" ? 
           (presupuesto as any).seña.toLocaleString("es-AR", {minimumFractionDigits:2}) : "-";
         const diagnosticoMonto = typeof (presupuesto as any)?.diagnostico === "number" ?
@@ -312,7 +319,7 @@ export async function POST(req: NextRequest) {
             <div><strong>Diagnóstico de la falla:</strong> ${presupuesto?.diagnostico_falla || "-"}</div>
             <div><strong>Proceso de reparación:</strong> ${presupuesto?.descripcion_proceso || "-"}</div>
             <div><strong>Repuestos necesarios:</strong> ${presupuesto?.repuestos_necesarios || "-"}</div>
-            <div><strong>Importe:</strong> ${importeTotal}</div>
+            <div><strong>Importe:</strong> ${importeConImpuestosTexto}</div>
             <div><strong>Seña:</strong> ${senia}</div>
             <div><strong>Diagnóstico:</strong> ${diagnosticoMonto}</div>
           </div>
@@ -342,7 +349,7 @@ export async function POST(req: NextRequest) {
             `Presupuesto disponible`,
             `Ingreso: ${numero}`,
             equiposTexto ? `Equipos: ${equiposTexto}` : "",
-            `Importe: ${importeTotal}`,
+            `Importe: ${importeConImpuestosTexto}`,
             `Seña: ${senia}`,
             `Diagnóstico: ${diagnosticoMonto}`,
             "",
@@ -355,13 +362,13 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "presupuesto", // nuevo nombre exacto definido por el usuario en Meta
-              language: "es", // Spanish
+              language: "es_AR", // Spanish (Argentina)
               // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
                 { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
                 { name: "repair_number", value: numero },
                 { name: "equipment_list", value: equiposTexto || "" },
-                { name: "total_amount", value: importeTotal },
+                { name: "total_amount", value: importeConImpuestosTexto },
                 { name: "deposit_amount", value: senia },
                 { name: "diagnostic_amount", value: diagnosticoMonto },
               ],
@@ -451,7 +458,7 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "reparacion_lista_entrega", // nombre exacto definido por el usuario en Meta
-              language: "es", // Spanish
+              language: "es_AR", // Spanish (Argentina)
               // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
                 { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
@@ -476,6 +483,79 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error('[ERROR] Error al enviar correo de lista de entrega:', error);
         throw new Error(`Error al enviar correo de lista de entrega: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      }
+    }
+
+    if (type === "entrega_retirada") {
+      try {
+        console.log('[DEBUG] Generando notificación de entrega retirada...');
+
+        const equiposTexto = Array.isArray(equipos)
+          ? equipos
+              .map((eq: any) => `${eq.tipo_equipo || "Equipo"} x${eq.cantidad || 1}`)
+              .join(", ")
+          : "";
+
+        const retiranteNombre = (entrega as any)?.nombre_retirante || "";
+        const retiranteApellido = (entrega as any)?.apellido_retirante || "";
+        const retiranteDni = (entrega as any)?.dni_retirante || "";
+        const retiranteFull = `${retiranteNombre} ${retiranteApellido}`.trim();
+
+        const html = `
+          ${styles}
+          <h2>Equipo retirado con éxito</h2>
+          <p>Hola ${cliente?.nombre || ""} ${cliente?.apellido || ""}, tu equipo fue retirado correctamente.</p>
+          <div class="card">
+            <div><strong>N° de Ingreso:</strong> ${numero}</div>
+            <div><strong>Equipos:</strong> ${equiposTexto || "-"}</div>
+          </div>
+          <div class="card">
+            <h3>Datos de quien retira</h3>
+            <div><strong>Nombre y apellido:</strong> ${retiranteFull || "-"}</div>
+            <div><strong>DNI:</strong> ${retiranteDni || "-"}</div>
+          </div>
+          <p>Ante cualquier duda o consulta, puedes responder a este correo o comunicarte al <strong>3875018530</strong>.</p>
+        `;
+
+        if (to) {
+          await sendEmail({
+            to,
+            subject: `Equipo retirado - Ingreso ${numero}`,
+            html,
+            replyTo: process.env.EMAIL_USER,
+          });
+        }
+
+        if (whatsappNumber) {
+          whatsappTemplate = {
+            type: "entrega_retirada",
+            to: whatsappNumber,
+            template: {
+              name: "reparacion_retirada",
+              language: "es_AR",
+              bodyParams: [
+                { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
+                { name: "repair_number", value: numero },
+                { name: "equipment_list", value: equiposTexto || "" },
+                { name: "retirante_fullname", value: retiranteFull || "" },
+                { name: "retirante_dni", value: retiranteDni || "" },
+              ],
+            },
+          };
+
+          try {
+            await sendWhatsapp({
+              to: whatsappNumber,
+              template: whatsappTemplate.template,
+            });
+          } catch (e) {
+            console.warn('[WARN] No se pudo enviar WhatsApp de entrega retirada:', e);
+          }
+        }
+
+      } catch (error) {
+        console.error('[ERROR] Error al enviar notificación de entrega retirada:', error);
+        throw new Error(`Error al enviar notificación de entrega retirada: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       }
     }
 

@@ -715,29 +715,6 @@ export default function DeliveryPage() {
     // Validar que diagnóstico esté abonado si la entrega proviene de rechazo
     if ((repair as any).rechazoPresupuesto && !(repair as any).diagnosticoAbonado) {
       toast({
-        variant: 'destructive',
-        title: 'No se puede entregar',
-        description: 'Debe estar abonado el diagnóstico para entregar una reparación con presupuesto rechazado.',
-      })
-      return;
-    }
-    // Actualizar estado_entrega a 'entregado' en la tabla entregas
-    await supabase
-      .from('entregas')
-      .update({ estado_entrega: 'entregado' })
-      .eq('reparacion_id', repair.id);
-    // Opcional: actualizar fecha_entrega en reparaciones
-    await supabase
-      .from('reparaciones')
-      .update({ fecha_entrega: new Date().toISOString() })
-      .eq('id', repair.id);
-    // Recargar lista para que desaparezca del módulo actual
-    await loadDeliveryRepairs();
-    toast({ title: 'Entrega finalizada', description: 'El equipo fue marcado como entregado.' })
-  };
-
-  // Reparaciones completadas para mover a entrega
-  const [completedRepairs, setCompletedRepairs] = useState<Repair[]>([]);
 
   const filteredDeliveryRepairs = deliveryRepairs.filter((repair: Repair) => {
     const client = clients.find((c) => c.id === repair.clienteId)

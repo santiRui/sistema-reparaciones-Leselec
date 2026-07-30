@@ -131,7 +131,12 @@ export default function RepairDetailPage({ params }: { params: Promise<{ numeroI
               <div><b>Repuestos:</b> {presupuesto.repuestos_necesarios}</div>
             )}
             {presupuesto.importe_total && (
-              <div><b>Importe Total:</b> $ {Number(presupuesto.importe_total).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}</div>
+              <div>
+                <b>Importe Total:</b>
+                {" "}
+                $ {Number(presupuesto.importe_total).toLocaleString('es-AR', { style: 'decimal', minimumFractionDigits: 2 })}
+                {presupuesto.emision_factura ? ' + impuestos' : ''}
+              </div>
             )}
             {(presupuesto as any)['seña'] && (
               <div>
