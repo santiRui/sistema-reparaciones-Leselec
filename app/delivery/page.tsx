@@ -105,6 +105,7 @@ export default function DeliveryPage() {
   const [editingRepair, setEditingRepair] = useState<Repair | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [currentCajeroId, setCurrentCajeroId] = useState<number | null>(null)
+  const [completedRepairs, setCompletedRepairs] = useState<Repair[]>([])
   const [deliveryFormData, setDeliveryFormData] = useState({
     cajero: "",
     fechaRetiro: "",
@@ -715,6 +716,48 @@ export default function DeliveryPage() {
     // Validar que diagnóstico esté abonado si la entrega proviene de rechazo
     if ((repair as any).rechazoPresupuesto && !(repair as any).diagnosticoAbonado) {
       toast({
+        variant: 'destructive',
+        title: 'No se puede entregar',
+        description: 'Debe estar abonado el diagnóstico para entregar una reparación con presupuesto rechazado.',
+      });
+      return;
+    }
+
+    // Actualizar estado_entrega a 'entregado' en la tabla entregas
+    await supabase
+      .from('entregas')
+      .update({ estado_entrega: 'entregado' })
+      .eq('reparacion_id', repair.id);
+
+    // Actualizar fecha_entrega en reparaciones
+    await supabase
+      .from('reparaciones')
+      .update({ fecha_entrega: new Date().toISOString() })
+      .eq('id', repair.id);
+
+    // Enviar notificación de equipo retirado al cliente
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'entrega_retirada',
+          reparacionId: repair.id,
+          numeroIngreso: repair.numeroIngreso,
+        }),
+      });
+    } catch (err) {
+      console.warn('No se pudo enviar notificación de entrega retirada:', err);
+    }
+
+    // Recargar lista para que desaparezca del módulo actual
+    await loadDeliveryRepairs();
+
+    toast({
+      title: 'Entrega finalizada',
+      description: 'El equipo fue marcado como entregado.',
+    });
+  };
 
   const filteredDeliveryRepairs = deliveryRepairs.filter((repair: Repair) => {
     const client = clients.find((c) => c.id === repair.clienteId)
