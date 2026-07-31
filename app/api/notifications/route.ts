@@ -532,7 +532,7 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "reparacion_retirada",
-              language: "es_AR",
+              language: "es",
               bodyParams: [
                 { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
                 { name: "repair_number", value: numero },
