@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
           to: whatsappNumber,
           template: {
             name: "reparacion_ingreso", // nombre exacto definido por el usuario en Meta
-            language: "es_AR", // Spanish (Argentina)
+            language: "es", // Spanish (genérico en Meta)
             // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
             bodyParams: [
               { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
@@ -362,7 +362,7 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "presupuesto", // nuevo nombre exacto definido por el usuario en Meta
-              language: "es_AR", // Spanish (Argentina)
+              language: "es", // Spanish (genérico en Meta)
               // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
                 { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
@@ -458,7 +458,7 @@ export async function POST(req: NextRequest) {
             to: whatsappNumber,
             template: {
               name: "reparacion_lista_entrega", // nombre exacto definido por el usuario en Meta
-              language: "es_AR", // Spanish (Argentina)
+              language: "es", // Spanish (genérico en Meta)
               // Header sin variable (texto fijo en Meta); el saludo con el nombre va en el cuerpo
               bodyParams: [
                 { name: "customer_name", value: `${cliente?.nombre || ""} ${cliente?.apellido || ""}`.trim() },
